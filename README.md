@@ -133,6 +133,53 @@ Para añadir un nuevo script:
 
 Activa la salida de depuración añadiendo `set -x` al principio de cualquier script.
 
+## Refactorización a Python (En Progreso)
+
+Estamos migrando estas herramientas de Bash a Python para mejorar:
+
+- Manejo de errores y validación de datos
+- Configuración más robusta y flexible
+- Mejor interfaz de línea de comandos
+- Mayor facilidad de mantenimiento y extensibilidad
+
+### Estructura del proyecto Python
+
+```
+deploy-tools/
+├── python/              # Nueva implementación en Python
+│   ├── wp_deploy/       # Paquete principal
+│   │   ├── __init__.py
+│   │   ├── config.py    # Manejo de configuración 
+│   │   ├── sync/        # Módulos de sincronización
+│   │   ├── tools/       # Herramientas auxiliares
+│   │   └── utils/       # Utilidades comunes
+│   ├── cli.py           # Punto de entrada CLI
+│   ├── requirements.txt # Dependencias
+│   └── setup.py         # Configuración de instalación
+├── scripts/             # Scripts originales Bash (legado)
+└── ... (resto de la estructura original)
+```
+
+### Compatibilidad
+
+La nueva versión en Python es totalmente compatible con:
+- Los mismos archivos de configuración (.env)
+- El mismo flujo de trabajo e interfaz de comandos
+- Las mismas funcionalidades, con mejoras adicionales
+
+## Plan de trabajo
+
+La migración a Python se realizará en las siguientes fases:
+
+1. **Fase 1**: Implementación del sistema de configuración y estructura base
+2. **Fase 2**: Migración de funcionalidades de sincronización de archivos
+3. **Fase 3**: Migración de sincronización de base de datos
+4. **Fase 4**: Migración de herramientas de parches y rollback
+5. **Fase 5**: Mejoras de interfaz de línea de comandos y documentación
+6. **Fase 6**: Pruebas de integración y optimizaciones
+
+Durante la migración, ambas versiones (Bash y Python) coexistirán para facilitar la transición.
+
 ## Próximos pasos 
 
 Este sistema está diseñado para ser una solución de transición. En futuras versiones, se planea:
