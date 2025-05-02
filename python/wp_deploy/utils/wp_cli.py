@@ -13,7 +13,8 @@ from wp_deploy.config_yaml import get_yaml_config, get_nested
 
 def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False, 
               remote_host: Optional[str] = None, remote_path: Optional[str] = None,
-              use_ddev: bool = True, wp_path: Optional[str] = None) -> Tuple[int, str, str]:
+              use_ddev: bool = True, wp_path: Optional[str] = None,
+              memory_limit: Optional[str] = None) -> Tuple[int, str, str]:
     """
     Ejecuta un comando de WP-CLI
     
@@ -25,10 +26,18 @@ def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False,
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
         wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        memory_limit: Límite de memoria para PHP (si es None, se usa el valor de configuración)
         
     Returns:
         Tuple[int, str, str]: Código de salida, salida estándar, error estándar
     """
+    # Obtener configuración y valor de memoria
+    config = get_yaml_config()
+    
+    # Si no se especifica límite de memoria, usar el valor de configuración
+    if memory_limit is None:
+        memory_limit = config.get_wp_memory_limit()
+    
     if not remote:
         # Comando local
         if use_ddev:
@@ -36,7 +45,6 @@ def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False,
             wp_cmd_str = " ".join([f"'{arg}'" if ' ' in arg else arg for arg in command])
             
             # Obtener la ruta de WordPress dentro de DDEV desde la configuración
-            config = get_yaml_config()
             ddev_wp_path = wp_path
             
             if not ddev_wp_path:
@@ -53,7 +61,8 @@ def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False,
                         # Si no podemos inferir la ruta, usar el valor predeterminado
                         ddev_wp_path = "/var/www/html"
             
-            cmd = ["ddev", "exec", f"cd {ddev_wp_path} && wp {wp_cmd_str}"]
+            # Añadir límite de memoria al comando
+            cmd = ["ddev", "exec", f"cd {ddev_wp_path} && php -d memory_limit={memory_limit} $(which wp) {wp_cmd_str}"]
             
             try:
                 result = subprocess.run(
@@ -71,12 +80,17 @@ def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False,
             wp_cmd = ["wp"] + command
             
             try:
+                # Intentar configurar el entorno con el límite de memoria
+                env = os.environ.copy()
+                env["PHP_MEMORY_LIMIT"] = memory_limit
+                
                 result = subprocess.run(
                     wp_cmd,
                     cwd=str(path),
                     capture_output=True,
                     text=True,
-                    check=False
+                    check=False,
+                    env=env
                 )
                 return result.returncode, result.stdout, result.stderr
             except Exception as e:
@@ -86,10 +100,13 @@ def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False,
         if not remote_host or not remote_path:
             return 1, "", "Se requiere host y ruta remotos para ejecutar WP-CLI en el servidor"
             
-        # Construir comando SSH
+        # Construir comando SSH con aumento de límite de memoria para PHP
         wp_cmd = ["wp"] + command
         wp_cmd_str = " ".join([f"'{arg}'" if ' ' in arg else arg for arg in wp_cmd])
-        ssh_cmd = ["ssh", remote_host, f"cd {remote_path} && {wp_cmd_str}"]
+        
+        # Añadir el límite de memoria a los comandos PHP
+        php_memory_cmd = f"php -d memory_limit={memory_limit}"
+        ssh_cmd = ["ssh", remote_host, f"cd {remote_path} && {php_memory_cmd} $(which wp) {' '.join(command)}"]
         
         try:
             result = subprocess.run(
@@ -355,63 +372,120 @@ def get_theme_info(theme_slug: str, path: Union[str, Path], remote: bool = False
         
 def get_item_version_from_path(file_path: str, path: Union[str, Path], remote: bool = False,
                              remote_host: Optional[str] = None, remote_path: Optional[str] = None,
-                             use_ddev: bool = True, wp_path: Optional[str] = None) -> Tuple[str, str, str]:
+                             use_ddev: bool = True, wp_path: Optional[str] = None, 
+                             memory_limit: Optional[str] = None) -> Tuple[str, str, str]:
     """
-    Extrae la versión de un plugin o tema basado en una ruta de archivo
+    Obtiene información sobre el tipo de elemento (plugin/tema) y versión desde una ruta de archivo
     
     Args:
-        file_path: Ruta relativa al archivo
-        path: Ruta al directorio de WordPress
-        remote: Si es True, obtiene información del servidor remoto
+        file_path: Ruta relativa al archivo (desde la raíz del sitio)
+        path: Ruta base al directorio de WordPress
+        remote: Si es True, verifica en el servidor remoto
         remote_host: Host remoto (solo si remote=True)
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
         wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        memory_limit: Límite de memoria para PHP (opcional)
         
     Returns:
-        Tuple[str, str, str]: Tipo de item (plugin, theme, other), slug, versión (o cadena vacía si no se encuentra)
+        Tuple[str, str, str]: Tipo de elemento ("plugin", "theme"), slug, versión
     """
-    # Determinar tipo y slug
+    # Analizar la ruta para determinar si es un plugin o tema
     item_type = "other"
     item_slug = ""
     
     if '/plugins/' in file_path:
         item_type = "plugin"
-        parts = file_path.split('/plugins/')
-        if len(parts) > 1:
-            subparts = parts[1].split('/')
-            if len(subparts) > 0:
-                item_slug = subparts[0]
+        # El slug del plugin es el directorio principal dentro de plugins/
+        parts = file_path.split('/')
+        for i, part in enumerate(parts):
+            if part == "plugins" and i + 1 < len(parts):
+                item_slug = parts[i + 1]
+                break
     elif '/themes/' in file_path:
         item_type = "theme"
-        parts = file_path.split('/themes/')
-        if len(parts) > 1:
-            subparts = parts[1].split('/')
-            if len(subparts) > 0:
-                item_slug = subparts[0]
-    elif '/mu-plugins/' in file_path:
-        item_type = "mu-plugin"
-        # Para mu-plugins usamos el nombre del archivo como slug
-        item_slug = os.path.basename(file_path)
-        # Quitar extensión .php si existe
-        if item_slug.endswith('.php'):
-            item_slug = item_slug[:-4]
-    
-    # Si no es plugin o tema, devolver valores predeterminados
+        # El slug del tema es el directorio principal dentro de themes/
+        parts = file_path.split('/')
+        for i, part in enumerate(parts):
+            if part == "themes" and i + 1 < len(parts):
+                item_slug = parts[i + 1]
+                break
+                
+    # Si no se ha podido determinar el tipo o el slug, no se puede obtener versión
     if item_type == "other" or not item_slug:
         return item_type, item_slug, ""
-        
-    # Obtener versión según el tipo
-    if item_type == "plugin":
-        info = get_plugin_info(item_slug, path, remote, remote_host, remote_path, use_ddev, wp_path)
-        return item_type, item_slug, info.get("version", "")
-    elif item_type == "theme":
-        info = get_theme_info(item_slug, path, remote, remote_host, remote_path, use_ddev, wp_path)
-        return item_type, item_slug, info.get("version", "")
-    elif item_type == "mu-plugin":
-        # Para mu-plugins no hay un comando específico en wp-cli
-        # Podríamos intentar extraer la versión del archivo, pero es complejo
-        # y propenso a errores. Por ahora devolvemos string vacío.
+    
+    # Obtener versión usando WP-CLI
+    try:
+        if item_type == "plugin":
+            cmd = ["plugin", "get", item_slug, "--format=json"]
+            code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
+            
+            if code != 0 or not stdout.strip():
+                # Si hay error, mucha información en el log
+                if "Fatal error: Allowed memory size" in stderr:
+                    # Aumentar memoria disponible
+                    enlarged_memory = "1024M"
+                    if memory_limit:
+                        try:
+                            # Intentar aumentar el límite especificado
+                            current_limit = int(memory_limit.replace("M", "").replace("G", "000").replace("K", ""))
+                            enlarged_memory = str(current_limit * 2) + "M"
+                        except:
+                            enlarged_memory = "1024M"
+                            
+                    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, enlarged_memory)
+                    
+                    if code != 0 or not stdout.strip():
+                        if "Fatal error: Allowed memory size" in stderr:
+                            raise Exception(f"Error de memoria al obtener información del plugin: {stderr}")
+                        else:
+                            return item_type, item_slug, ""
+                else:
+                    return item_type, item_slug, ""
+                
+            try:
+                data = json.loads(stdout)
+                return item_type, item_slug, data.get("version", "")
+            except:
+                return item_type, item_slug, ""
+                
+        elif item_type == "theme":
+            cmd = ["theme", "get", item_slug, "--format=json"]
+            code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
+            
+            if code != 0 or not stdout.strip():
+                # Si hay error, mucha información en el log
+                if "Fatal error: Allowed memory size" in stderr:
+                    # Aumentar memoria disponible
+                    enlarged_memory = "1024M"
+                    if memory_limit:
+                        try:
+                            # Intentar aumentar el límite especificado
+                            current_limit = int(memory_limit.replace("M", "").replace("G", "000").replace("K", ""))
+                            enlarged_memory = str(current_limit * 2) + "M"
+                        except:
+                            enlarged_memory = "1024M"
+                            
+                    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, enlarged_memory)
+                    
+                    if code != 0 or not stdout.strip():
+                        if "Fatal error: Allowed memory size" in stderr:
+                            raise Exception(f"Error de memoria al obtener información del tema: {stderr}")
+                        else:
+                            return item_type, item_slug, ""
+                else:
+                    return item_type, item_slug, ""
+                
+            try:
+                data = json.loads(stdout)
+                return item_type, item_slug, data.get("version", "")
+            except:
+                return item_type, item_slug, ""
+                
+    except Exception as e:
+        if isinstance(e, Exception):
+            raise e
         return item_type, item_slug, ""
         
     return item_type, item_slug, ""

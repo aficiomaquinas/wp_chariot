@@ -42,49 +42,11 @@ class YAMLConfig:
         # Directorio de herramientas de despliegue
         self.deploy_tools_dir = self.project_root / "deploy-tools"
         
-        # Valores predeterminados para la configuración
-        self.config: Dict[str, Any] = {
-            # Configuración SSH
-            "ssh": {
-                "remote_host": "example-server",
-                "remote_path": "/home/user/webapps/example/",
-                "local_path": str(self.project_root / "app" / "public"),
-            },
-            
-            # Configuración de seguridad
-            "security": {
-                "production_safety": "enabled",
-            },
-            
-            # Configuración de base de datos
-            "database": {
-                "remote": {
-                    "name": "",
-                    "user": "",
-                    "password": "",
-                    "host": "localhost",
-                }
-            },
-            
-            # URLs
-            "urls": {
-                "remote": "https://example.com",
-                "local": "https://example.ddev.site",
-            },
-            
-            # Configuración de medios
-            "media": {
-                "url": "",
-                "expert_mode": False,
-                "path": "../media",
-            },
-            
-            # Exclusiones para sincronización
-            "exclusions": get_default_exclusions(),
-            
-            # Archivos protegidos
-            "protected_files": get_protected_files()
-        }
+        # Inicializar la configuración con los valores predeterminados
+        self.config = self.get_default_config()
+        
+        # Ajustar rutas específicas del proyecto
+        self.config["ssh"]["local_path"] = str(self.project_root / "app" / "public")
         
         # Cargar configuración desde archivos YAML
         self._load_config()
@@ -453,6 +415,65 @@ class YAMLConfig:
             if self.verbose:
                 print(f"❌ No se encontró el archivo de plantilla: {template_path}")
             self.save_default_config(output_path)
+
+    def get_default_config(self) -> Dict[str, Any]:
+        """
+        Crea una estructura de configuración predeterminada
+        
+        Returns:
+            Dict[str, Any]: Configuración predeterminada
+        """
+        return {
+            "ssh": {
+                "remote_host": "example-server",
+                "remote_path": "/home/user/webapps/example/",
+                "local_path": "app/public",
+            },
+            "security": {
+                "production_safety": "enabled",
+                "backups": "enabled",
+            },
+            "database": {
+                "remote": {
+                    "host": "localhost",
+                    "name": "",
+                    "user": "",
+                    "password": "",
+                },
+                "local": {
+                    "host": "db",
+                    "name": "db",
+                    "user": "db",
+                    "password": "db",
+                },
+            },
+            "urls": {
+                "remote": "https://example.com",
+                "local": "https://example.ddev.site",
+            },
+            "media": {
+                "url": "",
+                "expert_mode": False,
+                "path": "../media",
+            },
+            "ddev": {
+                "webroot": "/var/www/html/app/public",
+            },
+            "wp_cli": {
+                "memory_limit": "512M",
+            },
+            "exclusions": get_default_exclusions(),
+            "protected_files": get_protected_files(),
+        }
+        
+    def get_wp_memory_limit(self) -> str:
+        """
+        Obtiene el límite de memoria para PHP de WP-CLI
+        
+        Returns:
+            str: Límite de memoria para PHP
+        """
+        return self.get("wp_cli", "memory_limit", "512M")
 
 # Instancia global de configuración
 _config: Optional[YAMLConfig] = None

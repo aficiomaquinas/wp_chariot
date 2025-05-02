@@ -82,30 +82,32 @@ def sync_db_command(dry_run, direction, verbose):
 @click.option("--info", is_flag=True, help="Mostrar información detallada de un parche sin aplicarlo")
 @click.option("--dry-run", is_flag=True, help="Simular operación sin hacer cambios")
 @click.option("--description", "-d", help="Descripción del parche (al registrar)")
-def patch_command(file_path, list, add, remove, info, dry_run, description):
+@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada")
+def patch_command(file_path, list, add, remove, info, dry_run, description, verbose):
     """
-    Gestiona y aplica parches a plugins de terceros.
+    Gestiona y registra parches a plugins de terceros.
     
-    FILE_PATH es la ruta relativa al archivo que se va a parchar. Si no se especifica,
-    se intentará aplicar todos los parches registrados.
+    FILE_PATH es la ruta relativa al archivo que se va a parchar.
+    Este comando NO APLICA los parches, solo los gestiona. Para aplicar
+    un parche use el comando 'patch commit'.
     
     Ejemplos:
-      patch --list                            # Listar parches registrados
+      patch --list -v                     # Listar parches con información detallada
       patch --add wp-content/plugins/x/y.php  # Registrar un nuevo parche
       patch --add --description "Fix..." x.php # Registrar con descripción
       patch --remove wp-content/plugins/x/y.php # Eliminar un parche del registro
-      patch wp-content/plugins/x/y.php        # Aplicar un parche específico
-      patch --info wp-content/plugins/x/y.php # Ver detalles sin aplicar
-      patch                                   # Aplicar todos los parches
+      patch --info wp-content/plugins/x/y.php   # Ver detalles sin aplicar
     """
     # Opción de listar parches
     if list:
-        list_patches()
+        from wp_deploy.commands.patch import PatchManager
+        manager = PatchManager()
+        manager.list_patches(verbose=verbose)
         return
     
-    # Verificar que se proporcionó una ruta para add/remove
-    if (add or remove) and not file_path:
-        click.echo("❌ Debe especificar la ruta del archivo para --add o --remove")
+    # Verificar que se proporcionó una ruta para add/remove/info
+    if (add or remove or info) and not file_path:
+        click.echo("❌ Debe especificar la ruta del archivo para --add, --remove o --info")
         sys.exit(1)
     
     # Opción de agregar un parche
@@ -122,11 +124,81 @@ def patch_command(file_path, list, add, remove, info, dry_run, description):
             sys.exit(1)
         return
     
-    # Aplicar parche (con info detallada o no)
-    success = apply_patch(file_path=file_path, dry_run=dry_run, show_details=info)
-    if not success:
+    # Opción de mostrar info detallada
+    if info and file_path:
+        # Mostrar info detallada de un parche sin aplicarlo
+        success = apply_patch(file_path=file_path, dry_run=True, show_details=True)
+        if not success:
+            sys.exit(1)
+        return
+        
+    # Si no se especificó ninguna acción pero sí un archivo, mostrar info
+    if file_path and not (add or remove or info):
+        # Mostrar info simple
+        success = apply_patch(file_path=file_path, dry_run=True, show_details=False)
+        if not success:
+            sys.exit(1)
+        return
+        
+    # Si no se especificó ninguna opción, mostrar ayuda
+    click.echo("ℹ️ Para ver la lista de parches registrados: patch --list")
+    click.echo("ℹ️ Para aplicar parches: patch-commit [archivo]")
+    click.echo("ℹ️ Para más opciones: patch --help")
+
+@cli.command("patch-commit")
+@click.argument("file_path", required=False)
+@click.option("--dry-run", is_flag=True, help="Simular operación sin hacer cambios")
+@click.option("--force", is_flag=True, help="Forzar aplicación incluso con archivos modificados o versiones diferentes")
+@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada durante la ejecución")
+def patch_commit_command(file_path, dry_run, force, verbose):
+    """
+    Aplica parches registrados al servidor remoto.
+    
+    FILE_PATH es la ruta relativa al archivo que se va a parchar. Si no se especifica,
+    se intentará aplicar todos los parches registrados.
+    
+    Este comando requiere confirmación explícita y verifica la configuración
+    de seguridad de producción antes de aplicar cualquier cambio.
+    
+    Ejemplos:
+      patch-commit wp-content/plugins/x/y.php  # Aplicar un parche específico
+      patch-commit                           # Aplicar todos los parches registrados
+      patch-commit --dry-run                 # Ver qué cambios se harían sin aplicarlos
+      patch-commit --force                   # Forzar aplicación incluso con archivos modificados
+    """
+    from wp_deploy.config_yaml import get_yaml_config
+    from wp_deploy.commands.patch import PatchManager
+
+    # Verificar protección de producción
+    config = get_yaml_config()
+    production_safety = config.get("security", "production_safety") == "enabled"
+    
+    if production_safety and not dry_run:
+        print("⛔ ERROR: No se pueden aplicar parches con la protección de producción activada.")
+        print("   Esta operación modificará archivos en el servidor de PRODUCCIÓN.")
+        print("   Si estás seguro de lo que haces, puedes:")
+        print("   1. Usar --dry-run para ver qué cambios se harían sin aplicarlos")
+        print("   2. Desactivar temporalmente 'production_safety' en la configuración")
         sys.exit(1)
     
+    # Solicitar confirmación explícita para aplicar parches
+    if not dry_run:
+        if file_path:
+            message = f"⚠️ ¿Estás seguro de aplicar el parche a '{file_path}'? Esta acción modificará archivos en el servidor."
+        else:
+            message = "⚠️ ¿Estás seguro de aplicar TODOS los parches registrados? Esta acción modificará archivos en el servidor."
+        
+        confirm = input(f"{message} (s/N): ")
+        if confirm.lower() != "s":
+            print("❌ Operación cancelada.")
+            sys.exit(0)
+    
+    # Aplicar el parche o parches
+    success = apply_patch(file_path=file_path, dry_run=dry_run, show_details=verbose, force=force)
+    
+    if not success:
+        sys.exit(1)
+
 @cli.command("rollback")
 @click.argument("file_path")
 @click.option("--dry-run", is_flag=True, help="Simular operación sin hacer cambios")

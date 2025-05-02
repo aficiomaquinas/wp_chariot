@@ -42,6 +42,9 @@ class FileSynchronizer:
         # Cargar archivos protegidos
         self.protected_files = self.config.get_protected_files()
         
+        # Cargar límite de memoria para WP-CLI
+        self.wp_memory_limit = self.config.get_wp_memory_limit()
+        
     def _prepare_paths(self, direction: str) -> Tuple[str, str]:
         """
         Prepara las rutas de origen y destino según la dirección
@@ -577,7 +580,7 @@ class FileSynchronizer:
         # Si es simulación, agregar opción
         if dry_run:
             print("🔄 Ejecutando en modo simulación (no se realizarán cambios)")
-        
+            
         # Preparar exclusiones con archivos protegidos
         exclusions = self.exclusions.copy() if self.exclusions else {}
         
