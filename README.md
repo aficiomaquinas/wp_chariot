@@ -1,579 +1,579 @@
 # WordPress Deploy Tools
 
-Herramientas para sincronización, despliegue y gestión de parches en sitios WordPress, implementadas en Python para un flujo de trabajo de desarrollo eficiente.
+Tools for synchronization, deployment, and patch management in WordPress sites, implemented in Python for an efficient development workflow.
 
-## Filosofía y propósito
+## Philosophy and Purpose
 
-Este proyecto nace de la necesidad de democratizar el desarrollo y mantenimiento de sitios web basados en WordPress, especialmente para pequeños negocios y desarrolladores independientes, bajo tres principios fundamentales:
+This project was born from the need to democratize the development and maintenance of WordPress-based websites, especially for small businesses and independent developers, under three fundamental principles:
 
-### Autonomía digital
+### Digital Autonomy
 
-En un mundo donde la dependencia de plataformas SaaS y proveedores de servicios multinacionales crece exponencialmente, estas herramientas ayudan a mantener la soberanía sobre la infraestructura digital. La capacidad de migrar fácilmente entre proveedores de hosting, gestionar entornos eficientemente y mantener el control completo de los datos se vuelve crítica para la supervivencia digital sostenible.
+In a world where dependence on SaaS platforms and multinational service providers is growing exponentially, these tools help maintain sovereignty over digital infrastructure. The ability to easily migrate between hosting providers, efficiently manage environments, and maintain complete control over data becomes critical for sustainable digital survival.
 
-### Accesibilidad económica
+### Economic Accessibility
 
-Los modelos de precios de muchas soluciones comerciales están diseñados para economías de primer mundo, dejando fuera a pequeños emprendedores y negocios de economías emergentes. Este proyecto permite implementar flujos de trabajo profesionales y seguros sin la necesidad de costosas suscripciones, haciendo posible que pequeños negocios compitan digitalmente sin comprometer sus finanzas.
+The pricing models of many commercial solutions are designed for first-world economies, leaving out small entrepreneurs and businesses from emerging economies. This project allows implementing professional and secure workflows without the need for costly subscriptions, making it possible for small businesses to compete digitally without compromising their finances.
 
-### Eficiencia operativa
+### Operational Efficiency
 
-La gestión manual de entornos WordPress consume tiempo valioso que podría invertirse en crear valor real para clientes. Estas herramientas automatizan tareas repetitivas de sincronización, configuración y mantenimiento, permitiendo a desarrolladores y propietarios de negocios enfocarse en lo que realmente importa: crear y hacer crecer sus proyectos.
+Manual management of WordPress environments consumes valuable time that could be invested in creating real value for clients. These tools automate repetitive synchronization, configuration, and maintenance tasks, allowing developers and business owners to focus on what really matters: creating and growing their projects.
 
-En esencia, este proyecto pertenece a una nueva generación de herramientas open source que, potenciadas por avances tecnológicos como la IA, buscan devolver el control tecnológico a las personas y negocios independientes, siguiendo la tradición del movimiento de software libre y su visión de un internet más abierto y accesible para todos.
+In essence, this project belongs to a new generation of open source tools that, powered by technological advances such as AI, seek to return technological control to independent individuals and businesses, following the tradition of the free software movement and its vision of a more open and accessible internet for all.
 
-## Filosofía de configuración y flujo de trabajo
+## Configuration Philosophy and Workflow
 
-### Configuración única e idempotencia
+### Single Configuration and Idempotence
 
-Este proyecto se fundamenta en dos principios de ingeniería fundamentales:
+This project is based on two fundamental engineering principles:
 
-1. **Sistema de configuración dividido**: El proyecto opera con dos archivos de configuración complementarios:
-   - `config.yaml`: Contiene configuración global aplicable a todos los sitios
-   - `sites.yaml`: Define la configuración específica de cada sitio individual
+1. **Split Configuration System**: The project operates with two complementary configuration files:
+   - `config.yaml`: Contains global configuration applicable to all sites
+   - `sites.yaml`: Defines the specific configuration for each individual site
 
-   Este enfoque permite gestionar múltiples sitios WordPress desde una única instalación de las herramientas, eliminando inconsistencias y facilitando la adaptación a diferentes proyectos.
+   This approach allows managing multiple WordPress sites from a single installation of the tools, eliminating inconsistencies and facilitating adaptation to different projects.
 
-2. **Idempotencia**: Los comandos están diseñados para producir el mismo resultado final independientemente de cuántas veces se ejecuten. Esto permite automatizar operaciones sin preocuparse por efectos secundarios o estados intermedios.
+2. **Idempotence**: The commands are designed to produce the same final result regardless of how many times they are executed. This allows automating operations without worrying about side effects or intermediate states.
 
-### Gestión de múltiples sitios
+### Multiple Site Management
 
-El sistema permite operar con múltiples sitios WordPress desde una única instalación de las herramientas, lo que:
+The system allows operating with multiple WordPress sites from a single installation of the tools, which:
 
-1. **Centraliza las actualizaciones**: Mantener una sola copia de las herramientas permite actualizarlas fácilmente
-2. **Evita duplicación**: No es necesario clonar el proyecto en cada sitio de WordPress
-3. **Flexibilidad de ubicación**: El proyecto puede estar en cualquier ubicación de tu sistema, no necesariamente dentro del directorio DDEV de cada sitio
+1. **Centralizes Updates**: Maintaining a single copy of the tools allows for easy updates
+2. **Avoids Duplication**: It is not necessary to clone the project in each WordPress site
+3. **Location Flexibility**: The project can be in any location on your system, not necessarily within the DDEV directory of each site
 
-Cada sitio puede tener su propia configuración completa e independiente, y se accede mediante un alias único:
+Each site can have its own complete and independent configuration, and is accessed through a unique alias:
 
 ```bash
-# Inicializar el sistema de sitios
+# Initialize the site system
 python deploy-tools/python/cli.py site --init
 
-# Añadir un sitio con la configuración actual
-python deploy-tools/python/cli.py site --add mitienda --from-current 
+# Add a site with the current configuration
+python deploy-tools/python/cli.py site --add mystore --from-current 
 
-# Añadir otro sitio (se creará con configuración por defecto que deberás editar)
-python deploy-tools/python/cli.py site --add otrasitio
+# Add another site (will be created with default configuration that you should edit)
+python deploy-tools/python/cli.py site --add othersite
 
-# Establecer un sitio como predeterminado
-python deploy-tools/python/cli.py site --set-default mitienda
+# Set a site as default
+python deploy-tools/python/cli.py site --set-default mystore
 
-# Listar sitios disponibles
+# List available sites
 python deploy-tools/python/cli.py site --list
 ```
 
-Para ejecutar cualquier comando en un sitio específico, simplemente añade la opción `--site`:
+To run any command on a specific site, simply add the `--site` option:
 
 ```bash
-# Sincronizar archivos de un sitio específico
-python deploy-tools/python/cli.py sync-files --site mitienda
+# Synchronize files for a specific site
+python deploy-tools/python/cli.py sync-files --site mystore
 
-# Ver información del sistema para un sitio
-python deploy-tools/python/cli.py check --site otrasitio
+# View system information for a site
+python deploy-tools/python/cli.py check --site othersite
 ```
 
-### Flujo de trabajo recomendado
+### Recommended Workflow
 
-El típico flujo de trabajo para empezar a desarrollar en un sitio WordPress existente es:
+The typical workflow to start developing on an existing WordPress site is:
 
-#### 1. Preparación inicial (una sola vez)
+#### 1. Initial Setup (one-time)
 
 ```bash
-# Clonar las herramientas
+# Clone the tools
 git clone https://github.com/aficiomaquinas/wp-deploy-tools.git deploy-tools
 
-# Crear un sitio y configurarlo
+# Create a site and configure it
 cd deploy-tools/python
 python cli.py site --init
-python cli.py site --add mitienda
+python cli.py site --add mystore
 ```
 
-Editar el archivo de configuración del sitio (`sites.yaml`) con:
-- Datos de conexión SSH del servidor remoto
-- Rutas locales y remotas del proyecto
-- Configuración de base de datos
-- Patrones de exclusión para sincronización (especialmente `wp-content/uploads/*`)
-- URL de medios para evitar sincronizarlos localmente
+Edit the site configuration file (`sites.yaml`) with:
+- Remote server SSH connection data
+- Local and remote project paths
+- Database configuration
+- Exclusion patterns for synchronization (especially `wp-content/uploads/*`)
+- Media URL to avoid synchronizing them locally
 
-#### 2. Replicación del entorno (desarrollo diario)
+#### 2. Environment Replication (daily development)
 
-Todo el proceso puede realizarse con un solo comando:
+The entire process can be done with a single command:
 
 ```bash
-# Inicializar entorno completo (archivos, BD y configuración de medios)
-python cli.py init --with-db --with-media --site mitienda
+# Initialize complete environment (files, DB, and media configuration)
+python cli.py init --with-db --with-media --site mystore
 ```
 
-O paso a paso:
+Or step by step:
 
 ```bash
-# 1. Sincronizar archivos (excluyendo medios y nuestro código personalizado)
-python cli.py sync-files --site mitienda
+# 1. Synchronize files (excluding media and our custom code)
+python cli.py sync-files --site mystore
 
-# 2. Sincronizar base de datos
-python cli.py sync-db --site mitienda
+# 2. Synchronize database
+python cli.py sync-db --site mystore
 
-# 3. Configurar rutas de medios para usar los de producción
-python cli.py media-path --site mitienda
+# 3. Configure media paths to use production ones
+python cli.py media-path --site mystore
 
-# 4. Verificar diferencias
-python cli.py diff --site mitienda
+# 4. Verify differences
+python cli.py diff --site mystore
 ```
 
-En este punto, se tiene un entorno local completamente funcional que:
-- Contiene todos los archivos de WordPress, plugins y temas de producción
-- Tiene la misma configuración y contenido de la base de datos
-- Utiliza los medios directamente desde el servidor de producción
-- Está listo para desarrollo sin haber descargado gigabytes de archivos de medios
+At this point, you have a fully functional local environment that:
+- Contains all WordPress files, plugins, and themes from production
+- Has the same database configuration and content
+- Uses media directly from the production server
+- Is ready for development without having downloaded gigabytes of media files
 
-#### 3. Desarrollo y parches
+#### 3. Development and Patches
 
-A partir de aquí, se pueden:
-- Desarrollar plugins y temas propios que residirán en sus propios repositorios
-- Aplicar parches a plugins de terceros según sea necesario
-- Probar las modificaciones localmente antes de aplicarlas en producción
+From here, you can:
+- Develop your own plugins and themes that will reside in their own repositories
+- Apply patches to third-party plugins as needed
+- Test modifications locally before applying them in production
 
 ```bash
-# Registrar un parche para un plugin que necesita modificación
-python cli.py patch --add wp-content/plugins/woocommerce/archivo-a-modificar.php --site mitienda
+# Register a patch for a plugin that needs modification
+python cli.py patch --add wp-content/plugins/woocommerce/file-to-modify.php --site mystore
 
-# Editar el archivo localmente
+# Edit the file locally
 
-# Cuando esté listo, aplicar el parche en producción
-python cli.py patch-commit --site mitienda
+# When ready, apply the patch in production
+python cli.py patch-commit --site mystore
 ```
 
-### Automatización completa
+### Complete Automation
 
-Todo este proceso podría automatizarse en un solo comando gracias a la idempotencia del sistema. El comando `init` permite configurar un entorno de desarrollo completo con un solo click, ahorrando tiempo valioso y eliminando errores humanos en el proceso de configuración.
+This entire process could be automated in a single command thanks to the idempotence of the system. The `init` command allows setting up a complete development environment with a single click, saving valuable time and eliminating human errors in the configuration process.
 
-> 🔍 **Nota**: El principio de idempotencia es clave en este flujo. Incluso si un paso falla o se interrumpe, simplemente se puede volver a ejecutar el mismo comando y continuará desde donde se quedó, sin efectos secundarios no deseados.
+> 🔍 **Note**: The principle of idempotence is key in this flow. Even if a step fails or is interrupted, you can simply run the same command again and it will continue from where it left off, without unwanted side effects.
 
-### Beneficios de este enfoque
+### Benefits of this Approach
 
-Este flujo de trabajo resuelve uno de los mayores desafíos en el desarrollo de WordPress: el tiempo entre decidir trabajar en un sitio y tener un entorno local funcional. Con este método:
+This workflow solves one of the biggest challenges in WordPress development: the time between deciding to work on a site and having a functional local environment. With this method:
 
-- Se reduce drásticamente el tiempo de configuración (de horas a minutos)
-- No es necesario descargar gigas de archivos multimedia que no son parte del desarrollo
-- La base de datos y archivos reflejan exactamente la producción, eliminando sorpresas
-- Los cambios y parches se aplican de forma controlada y rastreable
-- Las modificaciones necesarias en producción se pueden realizar de forma segura y consistente
-- Se puede trabajar con múltiples sitios desde una única instalación de las herramientas
+- Setup time is drastically reduced (from hours to minutes)
+- No need to download gigabytes of media files that are not part of development
+- The database and files exactly reflect production, eliminating surprises
+- Changes and patches are applied in a controlled and traceable manner
+- Necessary modifications in production can be made safely and consistently
+- You can work with multiple sites from a single installation of the tools
 
-En esencia, estas herramientas permiten que los desarrolladores se enfoquen en crear valor real para sus clientes en lugar de lidiar con tareas repetitivas de configuración y sincronización.
+In essence, these tools allow developers to focus on creating real value for their clients instead of dealing with repetitive configuration and synchronization tasks.
 
-## Características principales
+## Main Features
 
-- **Sincronización bidireccional** de archivos entre entorno local y remoto
-- **Sincronización de base de datos** con ajuste automático de URLs y configuraciones
-- **Sistema avanzado de gestión de parches** para modificar plugins de terceros
-- **Gestión de rutas de medios** para trabajar con CDNs o servidores de medios externos
-- **Protecciones de seguridad** para prevenir cambios accidentales en producción
-- **Configuración centralizada** mediante archivos YAML con soporte para entornos
-- **Interfaz de línea de comandos** intuitiva con comandos y subcomandos
+- **Bidirectional synchronization** of files between local and remote environment
+- **Database synchronization** with automatic URL and configuration adjustment
+- **Advanced patch management system** for modifying third-party plugins
+- **Media path management** for working with CDNs or external media servers
+- **Security protections** to prevent accidental changes in production
+- **Centralized configuration** through YAML files with environment support
+- **Intuitive command-line interface** with commands and subcommands
 
-## Requisitos
+## Requirements
 
-- Python 3.6 o superior
-- SSH configurado con acceso al servidor remoto
-- MySQL/MariaDB (local si se usa sincronización de base de datos)
-- Para desarrollo local: DDEV sobre UNIX based OS (único soportado por el momento)
+- Python 3.6 or higher
+- SSH configured with access to the remote server
+- MySQL/MariaDB (local if using database synchronization)
+- For local development: DDEV on UNIX-based OS (only supported at the moment)
 
-## Instalación
+## Installation
 
-1. Clona este repositorio en tu proyecto WordPress:
+1. Clone this repository in your WordPress project:
 ```bash
    git clone https://github.com/aficiomaquinas/wp-deploy-tools.git deploy-tools
    ```
 
-2. Instala las dependencias:
+2. Install dependencies:
    ```bash
    cd deploy-tools/python
    pip install -r requirements.txt
    ```
 
-3. Crea tu archivo de configuración:
+3. Create your configuration file:
    ```bash
    python cli.py config --init
    ```
 
-## Estructura del proyecto
+## Project Structure
 
 ```
 deploy-tools/python/
-├── wp_deploy/                    # Paquete principal
+├── wp_deploy/                    # Main package
 │   ├── __init__.py
-│   ├── config_yaml.py            # Gestión de configuración YAML
-│   ├── commands/                 # Comandos disponibles
+│   ├── config_yaml.py            # YAML configuration management
+│   ├── commands/                 # Available commands
 │   │   ├── __init__.py
-│   │   ├── diff.py               # Mostrar diferencias
-│   │   ├── sync.py               # Sincronización de archivos
-│   │   ├── database.py           # Sincronización de base de datos
-│   │   ├── patch.py              # Aplicación de parches
-│   │   ├── site.py               # Gestión de múltiples sitios
-│   │   └── media.py              # Gestión de rutas de medios
-│   ├── utils/                    # Utilidades compartidas
+│   │   ├── diff.py               # Show differences
+│   │   ├── sync.py               # File synchronization
+│   │   ├── database.py           # Database synchronization
+│   │   ├── patch.py              # Patch application
+│   │   ├── site.py               # Multiple site management
+│   │   └── media.py              # Media path management
+│   ├── utils/                    # Shared utilities
 │   │   ├── __init__.py
-│   │   ├── ssh.py                # Operaciones SSH
-│   │   ├── wp_cli.py             # Operaciones con WP-CLI
-│   │   └── filesystem.py         # Operaciones de sistema de archivos
-├── cli.py                        # Punto de entrada CLI
-├── config.yaml                   # Configuración global para todos los sitios
-├── sites.yaml                    # Configuración específica de cada sitio
-├── patches.lock.json             # Registro de parches aplicados
-├── setup.py                      # Configuración de instalación
-└── requirements.txt              # Dependencias
+│   │   ├── ssh.py                # SSH operations
+│   │   ├── wp_cli.py             # WP-CLI operations
+│   │   └── filesystem.py         # Filesystem operations
+├── cli.py                        # CLI entry point
+├── config.yaml                   # Global configuration for all sites
+├── sites.yaml                    # Specific configuration for each site
+├── patches.lock.json             # Applied patches registry
+├── setup.py                      # Installation configuration
+└── requirements.txt              # Dependencies
 ```
 
-## Configuración
+## Configuration
 
-El sistema utiliza archivos de configuración YAML para gestionar todos los parámetros necesarios.
+The system uses YAML configuration files to manage all necessary parameters.
 
-### Gestión de configuración
+### Configuration Management
 
-La configuración se puede personalizar mediante los siguientes comandos:
+The configuration can be customized through the following commands:
 
 ```bash
-# Mostrar la configuración actual (global + sitio predeterminado)
+# Show current configuration (global + default site)
 python cli.py config --show
 
-# Mostrar la configuración de un sitio específico
-python cli.py config --show --site mitienda
+# Show configuration for a specific site
+python cli.py config --show --site mystore
 
-# Crear archivos de configuración predeterminados
+# Create default configuration files
 python cli.py config --init
 
-# Generar una plantilla de configuración con comentarios explicativos
+# Generate a configuration template with explanatory comments
 python cli.py config --template
 
-# Verificar la configuración y los requisitos del sistema
+# Verify configuration and system requirements
 python cli.py check
 
-# Verificar un sitio específico
-python cli.py check --site mitienda
+# Verify a specific site
+python cli.py check --site mystore
 ```
 
-### Gestión de sitios
+### Site Management
 
-El sistema multi-sitio permite administrar varios sitios WordPress:
+The multi-site system allows managing several WordPress sites:
 
 ```bash
-# Inicializar el sistema de sitios
+# Initialize the site system
 python cli.py site --init
 
-# Añadir un sitio con la configuración actual
-python cli.py site --add mitienda --from-current
+# Add a site with the current configuration
+python cli.py site --add mystore --from-current
 
-# Añadir un nuevo sitio (con configuración por defecto)
-python cli.py site --add otrositio
+# Add a new site (with default configuration)
+python cli.py site --add othersite
 
-# Establecer un sitio como predeterminado
-python cli.py site --set-default mitienda
+# Set a site as default
+python cli.py site --set-default mystore
 
-# Listar todos los sitios configurados
+# List all configured sites
 python cli.py site --list
 
-# Eliminar un sitio de la configuración (no elimina archivos)
-python cli.py site --remove otrositio
+# Remove a site from the configuration (does not delete files)
+python cli.py site --remove othersite
 ```
 
-### Ejemplo de archivos de configuración
+### Example Configuration Files
 
-#### Configuración global (config.yaml)
+#### Global Configuration (config.yaml)
 
 ```yaml
-# Configuración global para WordPress Deploy Tools
-# Este archivo contiene configuración común para todos los sitios
+# Global configuration for WordPress Deploy Tools
+# This file contains common configuration for all sites
 
-# Ajustes WP-CLI globales
+# Global WP-CLI settings
 wp_cli:
-  memory_limit: "512M"  # Límite de memoria para PHP en WP-CLI
+  memory_limit: "512M"  # Memory limit for PHP in WP-CLI
 
-# Parámetros de seguridad por defecto
+# Default security parameters
 security:
-  production_safety: "enabled"  # Protección contra sobrescritura en producción
-  backups: "enabled"  # Crear backups automáticos antes de operaciones peligrosas
+  production_safety: "enabled"  # Protection against overwriting in production
+  backups: "enabled"  # Create automatic backups before dangerous operations
 
-# Exclusiones por defecto (se pueden sobrescribir por sitio)
+# Default exclusions (can be overridden per site)
 exclusions:
-  # Directorios de caché y optimización
+  # Cache and optimization directories
   cache: "wp-content/cache/"
   litespeed: "wp-content/litespeed/"
   
-  # Media (por defecto no sincronizar uploads)
+  # Media (by default do not synchronize uploads)
   default-themes: "wp-content/themes/twenty*"
   uploads-by-year: "wp-content/uploads/[0-9][0-9][0-9][0-9]/"
 
-# Archivos protegidos por defecto
+# Default protected files
 protected_files:
   - "wp-config.php"
   - "wp-config-ddev.php"
   - ".gitignore"
   - ".ddev/" 
 
-#### Configuración de sitios (sites.yaml)
+#### Site Configuration (sites.yaml)
 
 ```yaml
-# Configuración de múltiples sitios para WordPress Deploy Tools
+# Multiple site configuration for WordPress Deploy Tools
 
-# Sitio predeterminado (si hay varios configurados)
-default: "mitienda"
+# Default site (if multiple are configured)
+default: "mystore"
 
-# Configuración de sitios individuales
+# Individual site configuration
 sites:
-  mitienda:
+  mystore:
     ssh:
-      remote_host: "mi-servidor"  # Alias SSH en ~/.ssh/config
-      remote_path: "/ruta/al/wordpress/en/servidor/"
-      local_path: "/ruta/local/al/proyecto/app/public/"
+      remote_host: "my-server"  # SSH alias in ~/.ssh/config
+      remote_path: "/path/to/wordpress/on/server/"
+      local_path: "/local/path/to/project/app/public/"
 
     security:
-      production_safety: "enabled"  # Protección contra sobrescritura
+      production_safety: "enabled"  # Protection against overwriting
 
     urls:
-      remote: "https://mi-sitio.com"
-      local: "https://mi-sitio.ddev.site"
+      remote: "https://my-site.com"
+      local: "https://my-site.ddev.site"
 
     database:
       remote:
-        name: "nombre_db"
-        user: "usuario_db"
-        password: "contraseña_segura"
+        name: "db_name"
+        user: "db_user"
+        password: "secure_password"
         host: "localhost"
 
     media:
-      url: "https://mi-sitio.com/wp-content/uploads/"
+      url: "https://my-site.com/wp-content/uploads/"
       expert_mode: false
       path: "../media"
 
-    # Configuración DDEV
+    # DDEV Configuration
     ddev:
       webroot: "/var/www/html/app/public"
 
-    # Exclusiones específicas para este sitio
+    # Specific exclusions for this site
     exclusions:
-      # Plugins personalizados que no deben sincronizarse
-      my-plugin: "wp-content/plugins/mi-plugin-personalizado/"
+      # Custom plugins that should not be synchronized
+      my-plugin: "wp-content/plugins/my-custom-plugin/"
       
-  otrosito:
+  othersite:
     ssh:
-      remote_host: "otro-servidor"
-      remote_path: "/var/www/html/otrosito/"
-      local_path: "/ruta/local/otrosito/app/public/"
+      remote_host: "other-server"
+      remote_path: "/var/www/html/othersite/"
+      local_path: "/local/path/othersite/app/public/"
     
-    # ... configuración similar para cada sitio
+    # ... similar configuration for each site
 ```
 
-## Comandos disponibles
+## Available Commands
 
-### Verificación y diferencias
+### Verification and Differences
 
 ```bash
-# Verificar configuración y requisitos para el sitio predeterminado
+# Verify configuration and requirements for the default site
 python cli.py check
 
-# Verificar un sitio específico
-python cli.py check --site mitienda
+# Verify a specific site
+python cli.py check --site mystore
 
-# Mostrar diferencias entre servidor remoto y local (sitio predeterminado)
+# Show differences between remote server and local (default site)
 python cli.py diff
 
-# Mostrar diferencias para un sitio específico
-python cli.py diff --site mitienda
+# Show differences for a specific site
+python cli.py diff --site mystore
 
-# Mostrar sólo diferencias de archivos parcheados
+# Show only differences in patched files
 python cli.py diff --patches
 
-# Mostrar diferencias de parches para un sitio específico
-python cli.py diff --patches --site mitienda
+# Show patch differences for a specific site
+python cli.py diff --patches --site mystore
 ```
 
-### Sincronización de archivos
+### File Synchronization
 
 ```bash
-# Sincronizar archivos desde el servidor remoto al entorno local (sitio predeterminado)
+# Synchronize files from remote server to local environment (default site)
 python cli.py sync-files
 
-# Sincronizar archivos para un sitio específico
-python cli.py sync-files --site mitienda
+# Synchronize files for a specific site
+python cli.py sync-files --site mystore
 
-# Sincronizar archivos desde el entorno local al servidor remoto
+# Synchronize files from local environment to remote server
 python cli.py sync-files --direction to-remote
 
-# Sincronizar archivos locales a remoto para un sitio específico
-python cli.py sync-files --direction to-remote --site mitienda
+# Synchronize local files to remote for a specific site
+python cli.py sync-files --direction to-remote --site mystore
 
-# Simular sincronización sin hacer cambios
-python cli.py sync-files --dry-run --site mitienda
+# Simulate synchronization without making changes
+python cli.py sync-files --dry-run --site mystore
 ```
 
-### Sincronización de base de datos
+### Database Synchronization
 
 ```bash
-# Sincronizar base de datos desde el servidor remoto al entorno local (sitio predeterminado)
+# Synchronize database from remote server to local environment (default site)
 python cli.py sync-db
 
-# Sincronizar base de datos para un sitio específico
-python cli.py sync-db --site mitienda
+# Synchronize database for a specific site
+python cli.py sync-db --site mystore
 
-# Sincronizar base de datos desde el entorno local al servidor remoto (PELIGROSO)
+# Synchronize database from local environment to remote server (DANGEROUS)
 python cli.py sync-db --direction to-remote
 
-# Simular sincronización sin hacer cambios
-python cli.py sync-db --dry-run --site mitienda
+# Simulate synchronization without making changes
+python cli.py sync-db --dry-run --site mystore
 ```
 
-### Gestión de parches
+### Patch Management
 
 ```bash
-# Listar parches registrados (sitio predeterminado)
+# List registered patches (default site)
 python cli.py patch --list
 
-# Listar parches para un sitio específico
-python cli.py patch --list --site mitienda
+# List patches for a specific site
+python cli.py patch --list --site mystore
 
-# Registrar un nuevo parche
-python cli.py patch --add wp-content/plugins/woocommerce/woocommerce.php --site mitienda
+# Register a new patch
+python cli.py patch --add wp-content/plugins/woocommerce/woocommerce.php --site mystore
 
-# Registrar un parche con descripción
-python cli.py patch --add --description "Corrección de error" wp-content/plugins/woocommerce/woocommerce.php --site mitienda
+# Register a patch with description
+python cli.py patch --add --description "Error correction" wp-content/plugins/woocommerce/woocommerce.php --site mystore
 
-# Ver información detallada de un parche
-python cli.py patch --info wp-content/plugins/woocommerce/woocommerce.php --site mitienda
+# View detailed information about a patch
+python cli.py patch --info wp-content/plugins/woocommerce/woocommerce.php --site mystore
 
-# Eliminar un parche del registro
-python cli.py patch --remove wp-content/plugins/woocommerce/woocommerce.php --site mitienda
+# Remove a patch from the registry
+python cli.py patch --remove wp-content/plugins/woocommerce/woocommerce.php --site mystore
 ```
 
-### Aplicación de parches
+### Patch Application
 
 ```bash
-# Aplicar un parche específico
-python cli.py patch-commit wp-content/plugins/woocommerce/woocommerce.php --site mitienda
+# Apply a specific patch
+python cli.py patch-commit wp-content/plugins/woocommerce/woocommerce.php --site mystore
 
-# Aplicar todos los parches registrados
-python cli.py patch-commit --site mitienda
+# Apply all registered patches
+python cli.py patch-commit --site mystore
 
-# Simular aplicación de parches sin hacer cambios
-python cli.py patch-commit --dry-run --site mitienda
+# Simulate patch application without making changes
+python cli.py patch-commit --dry-run --site mystore
 
-# Forzar aplicación incluso con archivos modificados
-python cli.py patch-commit --force --site mitienda
+# Force application even with modified files
+python cli.py patch-commit --force --site mystore
 ```
 
-### Rollback de parches
+### Patch Rollback
 
 ```bash
-# Revertir un parche aplicado
-python cli.py rollback wp-content/plugins/woocommerce/woocommerce.php --site mitienda
+# Revert an applied patch
+python cli.py rollback wp-content/plugins/woocommerce/woocommerce.php --site mystore
 
-# Simular rollback sin hacer cambios
-python cli.py rollback wp-content/plugins/woocommerce/woocommerce.php --dry-run --site mitienda
+# Simulate rollback without making changes
+python cli.py rollback wp-content/plugins/woocommerce/woocommerce.php --dry-run --site mystore
 ```
 
-### Gestión de rutas de medios
+### Media Path Management
 
 ```bash
-# Configurar rutas de medios según config.yaml (sitio predeterminado)
+# Configure media paths according to config.yaml (default site)
 python cli.py media-path
 
-# Configurar rutas de medios para un sitio específico
-python cli.py media-path --site mitienda
+# Configure media paths for a specific site
+python cli.py media-path --site mystore
 
-# Aplicar configuración en el servidor remoto
-python cli.py media-path --remote --site mitienda
+# Apply configuration on the remote server
+python cli.py media-path --remote --site mystore
 
-# Mostrar información detallada durante la configuración
-python cli.py media-path --verbose --site mitienda
+# Show detailed information during configuration
+python cli.py media-path --verbose --site mystore
 ```
 
-La gestión de rutas de medios permite configurar URLs personalizadas para los archivos multimedia de WordPress, facilitando:
+Media path management allows configuring custom URLs for WordPress media files, facilitating:
 
-- Usado en combinacion con exclusiones (por ejemplo de wp-content/uploads/{year}) permite reducir el tiempo que toma hacer que el entorno de desarrollo local funcione.
-- Usar CDNs o servidores de medios externos para mejorar rendimiento y reducir el tiempo de puesta en marcha del ambiente de desarrollo local, evitando tener que sincronizar los medios que pueden ser directorios muy pesados y que generalmente son estaticos y no suelen estar involucrados con el funcionamiento del sitio (generalmente no tienen scripts).
-- Mantener archivos multimedia en ubicaciones independientes del código
-- Configurar entornos de desarrollo para trabajar con media desde producción
-- Implementar estrategias de almacenamiento óptimas según presupuesto y necesidades
+- Used in combination with exclusions (for example wp-content/uploads/{year}) reduces the time it takes to make the local development environment work.
+- Use CDNs or external media servers to improve performance and reduce the startup time of the local development environment, avoiding having to synchronize media that can be very heavy directories and that are generally static and not usually involved with the operation of the site (generally they do not have scripts).
+- Maintain media files in locations independent of code
+- Configure development environments to work with media from production
+- Implement optimal storage strategies according to budget and needs
 
-El comando instala y configura automáticamente el plugin "WP Original Media Path" utilizando los valores definidos en la sección `media` del archivo de configuración:
+The command automatically installs and configures the "WP Original Media Path" plugin using the values defined in the `media` section of the configuration file:
 
 ```yaml
 media:
-  url: "https://media.midominio.com/wp-content/uploads/"  # URL para archivos multimedia
-  expert_mode: false  # Activar modo experto para rutas físicas personalizadas
-  path: "/ruta/absoluta/a/uploads"  # Ruta física (solo con expert_mode: true)
+  url: "https://media.mydomain.com/wp-content/uploads/"  # URL for media files
+  expert_mode: false  # Activate expert mode for custom physical paths
+  path: "/absolute/path/to/uploads"  # Physical path (only with expert_mode: true)
 ```
 
-## Sistema de parches
+## Patch System
 
-El sistema de parches permite mantener modificaciones a plugins y temas de terceros de manera organizada y rastreable:
+The patch system allows maintaining modifications to third-party plugins and themes in an organized and traceable manner:
 
-### Funcionamiento
+### Operation
 
-1. **Registro de parches**: Los parches se registran en un archivo `patches.lock.json`
-2. **Verificación de checksums**: Se comparan checksums para detectar cambios en archivos
-3. **Backup automático**: Se crean copias de seguridad antes de aplicar parches
-4. **Trazabilidad**: Se registra quién aplicó cada parche y cuándo
+1. **Patch Registry**: Patches are registered in a `patches.lock.json` file
+2. **Checksum Verification**: Checksums are compared to detect changes in files
+3. **Automatic Backup**: Backups are created before applying patches
+4. **Traceability**: Records who applied each patch and when
 
-### Estados de parches
+### Patch States
 
-El sistema puede mostrar diferentes estados para cada parche:
+The system can display different states for each patch:
 
-- **⏳ Pendiente**: Registrado pero no aplicado
-- **✅ Aplicado**: Aplicado correctamente y vigente
-- **⚠️ Huérfano**: El archivo local ha cambiado desde que se registró
-- **🔄 Obsoleto**: Parche aplicado pero el archivo local modificado después
-- **❌ Desajustado**: Aplicado pero el archivo remoto ha sido modificado
-- **📅 Caduco**: Parche obsoleto porque la versión remota ha cambiado
+- **⏳ Pending**: Registered but not applied
+- **✅ Applied**: Correctly applied and current
+- **⚠️ Orphaned**: The local file has changed since it was registered
+- **🔄 Obsolete**: Patch applied but local file modified afterward
+- **❌ Misaligned**: Applied but remote file has been modified
+- **📅 Expired**: Obsolete patch because the remote version has changed
 
-### Filosofía del sistema de parches
+### Patch System Philosophy
 
-El sistema de parches aborda un problema fundamental en el ecosistema WordPress: la necesidad de modificar código de terceros manteniendo la integridad del ciclo de actualizaciones.
+The patch system addresses a fundamental problem in the WordPress ecosystem: the need to modify third-party code while maintaining the integrity of the update cycle.
 
-#### ¿Por qué parches en lugar de forks completos?
+#### Why Patches Instead of Complete Forks?
 
-Mientras que algunas soluciones comerciales costosas ofrecen entornos "atómicos" con repositorios completos versionados (como Pantheon o RunCloud Enterprise), este enfoque:
+While some expensive commercial solutions offer "atomic" environments with fully versioned repositories (such as Pantheon or RunCloud Enterprise), this approach:
 
-1. **Respeta el versionamiento original**: El código ya está versionado por sus autores en Wordpress.org. Crear un sistema paralelo de versionamiento completo es redundante e ineficiente.
+1. **Respects Original Versioning**: The code is already versioned by its authors on WordPress.org. Creating a parallel complete versioning system is redundant and inefficient.
 
-2. **Mantiene la responsabilidad compartida**: Un parche por definición reconoce que estamos modificando algo que no es nuestro, pero asumiendo la responsabilidad por esa modificación.
+2. **Maintains Shared Responsibility**: A patch by definition acknowledges that we are modifying something that is not ours, but assuming responsibility for that modification.
 
-3. **Facilita las actualizaciones**: Al mantener un registro claro de las modificaciones puntuales, es más fácil determinar si un parche sigue siendo necesario después de una actualización.
+3. **Facilitates Updates**: By maintaining a clear record of specific modifications, it is easier to determine if a patch is still necessary after an update.
 
-4. **Reduce la complejidad operativa**: Gestionar un repositorio separado para cada plugin modificado genera una complejidad innecesaria en el flujo de trabajo.
+4. **Reduces Operational Complexity**: Managing a separate repository for each modified plugin generates unnecessary complexity in the workflow.
 
-Este enfoque simple pero efectivo ayuda a mantener WordPress seguro y funcional sin sacrificar la capacidad de personalización ni incurrir en costos elevados por soluciones comerciales que esencialmente hacen lo mismo de forma más compleja.
+This simple but effective approach helps keep WordPress secure and functional without sacrificing customization capability or incurring high costs for commercial solutions that essentially do the same thing in a more complex way.
 
-> 💡 **Nota:** En el futuro, podría integrarse con sistemas de verificación de integridad (Malcare, Wordfence, Jetpack) de plugins populares para manejar excepciones específicas a versiones parchadas, sin afectar la verificación en versiones futuras cuando el autor actualice el código.
+> 💡 **Note:** In the future, it could be integrated with integrity verification systems (Malcare, Wordfence, Jetpack) of popular plugins to handle exceptions specific to patched versions, without affecting verification in future versions when the author updates the code.
 
-## Características de seguridad
+## Security Features
 
-1. **Protección de entorno de producción**
-   - Si `production_safety` está habilitado, se ejecuta en modo simulación
-   - Requiere confirmación explícita para operaciones críticas
+1. **Production Environment Protection**
+   - If `production_safety` is enabled, it runs in simulation mode
+   - Requires explicit confirmation for critical operations
 
-2. **Protección de archivos**
-   - Sistema para identificar y proteger archivos críticos
-   - Solicita confirmación antes de sobrescribir archivos importantes
+2. **File Protection**
+   - System to identify and protect critical files
+   - Requests confirmation before overwriting important files
 
-3. **Copias de seguridad automáticas**
-   - Creación de backups antes de operaciones destructivas
-   - Backups con nombres únicos basados en timestamps
+3. **Automatic Backups**
+   - Creation of backups before destructive operations
+   - Backups with unique names based on timestamps
 
-4. **Verificación por checksums**
-   - Detección de cambios mediante checksums MD5
-   - Evita aplicar parches sobre archivos modificados
+4. **Checksum Verification**
+   - Detection of changes through MD5 checksums
+   - Avoids applying patches to modified files
 
-## Próximos pasos
+## Next Steps
 
-El proyecto se enfoca ahora en:
+The project now focuses on:
 
-1. **Mejorar la integración con DDEV** para una experiencia aún más fluida
-2. **Sistema de actualización automática** para facilitar el seguimiento de mejoras
-3. **Pruebas de integración** para validar el funcionamiento completo
-4. **Optimización de rendimiento** en proyectos con mucho contenido
-5. **Detección y gestión automática de plugins parcheados** en sistemas de verificación de integridad
-6. **Capacidades avanzadas de migración** para simplificar cambios entre proveedores de hosting
+1. **Improve DDEV integration** for an even smoother experience
+2. **Automatic update system** to facilitate tracking improvements
+3. **Integration tests** to validate complete functionality
+4. **Performance optimization** in projects with a lot of content
+5. **Automatic detection and management of patched plugins** in integrity verification systems
+6. **Advanced migration capabilities** to simplify changes between hosting providers
 
-## Licencia
+## License
 
-Este proyecto es software libre bajo licencia [MIT](LICENSE). 
+This project is free software under the [MIT](LICENSE) license. 
