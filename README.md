@@ -1,4 +1,8 @@
-# WordPress Deploy Tools
+# wp_chariot
+
+<p align="center">
+  <img src="logo.png" alt="wp_chariot logo" width="500"/>
+</p>
 
 Tools for synchronization, deployment, and patch management in WordPress sites, implemented in Python for an efficient development workflow.
 
