@@ -10,7 +10,6 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 
 from config_yaml import get_yaml_config
 from utils.ssh import SSHClient, run_rsync
-from utils.filesystem import get_default_exclusions
 
 # Importar la clase FileSynchronizer después para evitar importación circular
 import commands.sync as sync_module

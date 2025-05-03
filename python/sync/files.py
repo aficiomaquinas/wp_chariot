@@ -13,7 +13,7 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 
 from config_yaml import get_yaml_config
 from utils.ssh import SSHClient, run_rsync
-from utils.filesystem import ensure_dir_exists, create_backup, get_default_exclusions
+from utils.filesystem import ensure_dir_exists, create_backup
 
 class FileSynchronizer:
     """
@@ -113,7 +113,7 @@ class FileSynchronizer:
         exclusions = self.exclusions
         if not exclusions:
             print("ℹ️ No hay exclusiones configuradas. Usando exclusiones predeterminadas.")
-            exclusions = get_default_exclusions()
+            exclusions = {}
             
         # Mostrar número de exclusiones
         print(f"ℹ️ Se aplicarán {len(exclusions)} patrones de exclusión")

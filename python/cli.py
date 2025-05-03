@@ -17,7 +17,7 @@ if script_dir not in sys.path:
     sys.path.append(str(script_dir))
 
 # Importar la nueva configuración YAML en lugar de la anterior basada en .env
-from config_yaml import get_yaml_config, create_default_config, generate_template_config
+from config_yaml import get_yaml_config
 from commands.sync import sync_files
 from commands.diff import show_diff
 from commands.database import sync_database
@@ -301,13 +301,11 @@ def rollback_command(file_path, dry_run, site):
     
 @cli.command("config")
 @click.option("--show", is_flag=True, help="Mostrar configuración actual")
-@click.option("--init", is_flag=True, help="Crear archivo de configuración YAML predeterminado")
-@click.option("--template", is_flag=True, help="Generar plantilla de configuración con comentarios")
 @click.option("--repair", is_flag=True, help="Reparar la configuración si hay problemas de estructura")
 @click.option("--output", type=str, default="wp-deploy.yaml", help="Ruta de salida para el archivo de configuración")
 @click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada durante la ejecución")
 @site_option
-def config_command(show, init, template, repair, output, verbose, site):
+def config_command(show, repair, output, verbose, site):
     """
     Gestiona la configuración de las herramientas.
     """
@@ -323,16 +321,6 @@ def config_command(show, init, template, repair, output, verbose, site):
         if site:
             print(f"Mostrando configuración para el sitio: {site}")
         config.display()
-    elif init:
-        # Crear archivo de configuración predeterminado
-        config = get_yaml_config(verbose=verbose)
-        config.save_default_config(output_path)
-        click.echo(f"Configuración guardada en {output_path}")
-    elif template:
-        # Generar plantilla de configuración
-        config = get_yaml_config(verbose=verbose)
-        config.generate_template(output_path)
-        click.echo(f"Plantilla de configuración generada en {output_path}")
     elif repair:
         # Reparar la configuración
         import shutil
@@ -343,9 +331,6 @@ def config_command(show, init, template, repair, output, verbose, site):
             shutil.copy2(output_path, backup_path)
             click.echo(f"✅ Copia de seguridad creada: {backup_path}")
             
-        # Generar una plantilla de configuración
-        config = get_yaml_config(verbose=verbose)
-        
         # Leer la plantilla existente si existe
         existing_config = {}
         if output_path.exists():
@@ -370,7 +355,7 @@ def config_command(show, init, template, repair, output, verbose, site):
         except Exception as e:
             click.echo(f"❌ Error al guardar la configuración reparada: {str(e)}")
     else:
-        click.echo("Uso: wp-deploy config [--show|--init|--template|--repair] [--output ARCHIVO]")
+        click.echo("Uso: wp-deploy config [--show|--repair] [--output ARCHIVO]")
 
 @cli.command("site")
 @click.option("--list", is_flag=True, help="Listar sitios configurados")
@@ -531,7 +516,7 @@ def check_command(verbose, site):
             all_good = False
     
     if not all_good:
-        click.echo("⚠️ Algunas secciones de la configuración están faltando. Ejecute 'config --template' para generar una plantilla completa.")
+        click.echo("⚠️ Algunas secciones de la configuración están faltando. Ejecute 'config --repair' para generar una plantilla completa.")
     
     # Verificar que las rutas existen
     click.echo("\n🔍 Verificando rutas y configuración...")

@@ -14,7 +14,7 @@ from typing import Dict, List, Any, Optional, Tuple, Union, Set
 
 from config_yaml import get_yaml_config
 from utils.ssh import SSHClient, run_rsync
-from utils.filesystem import ensure_dir_exists, create_backup, get_default_exclusions
+from utils.filesystem import ensure_dir_exists, create_backup
 
 class FileSynchronizer:
     """
@@ -123,8 +123,7 @@ class FileSynchronizer:
         exclusions = self.exclusions.copy() if self.exclusions else {}
         if not exclusions:
             if not only_patches:
-                print("ℹ️ No hay exclusiones configuradas. Usando exclusiones predeterminadas.")
-            exclusions = get_default_exclusions()
+                print("ℹ️ No hay exclusiones configuradas.")
         
         # Añadir archivos protegidos a las exclusiones para que no aparezcan en el diff
         if self.protected_files:
@@ -132,7 +131,7 @@ class FileSynchronizer:
                 print(f"🛡️ Protegiendo {len(self.protected_files)} archivos durante la comparación")
             for i, file_pattern in enumerate(self.protected_files):
                 exclusions[f"protected_{i}"] = file_pattern
-            
+        
         # Mostrar número de exclusiones
         if not only_patches:
             print(f"ℹ️ Se aplicarán {len(exclusions)} patrones de exclusión")

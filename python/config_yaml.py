@@ -13,8 +13,6 @@ from typing import Dict, List, Any, Optional
 import copy
 import re
 
-from utils.filesystem import get_default_exclusions, get_protected_files
-
 class YAMLConfig:
     """
     Clase para gestionar configuración basada en YAML, con soporte para múltiples sitios
@@ -80,17 +78,16 @@ class YAMLConfig:
         # Configuración de proyecto (en la raíz del proyecto)
         project_config_file = self.project_root / "wp-deploy.yaml"
         
-        # Cargar configuración predeterminada
-        default_config = self.get_default_config()
-        self.config = default_config
+        # Inicializar configuración vacía
+        self.config = {}
         
         # Cargar configuración global si existe
         if global_config_file.exists():
             try:
                 with open(global_config_file, 'r') as f:
                     global_config = yaml.safe_load(f) or {}
-                    # Fusionar con la configuración por defecto
-                    self.merge_config(global_config)
+                    # Establecer la configuración global
+                    self.config = global_config
                 if self.verbose:
                     print(f"Configuración global cargada desde: {global_config_file}")
             except Exception as e:
@@ -150,8 +147,8 @@ class YAMLConfig:
         # Cargar la configuración del sitio
         site_config = self.sites[site_alias]
         
-        # Resetear la configuración actual a los valores por defecto
-        self.config = self.get_default_config()
+        # Resetear la configuración actual a un diccionario vacío
+        self.config = {}
         
         # Cargar configuración global
         global_config_file = self.deploy_tools_dir / "python" / "config.yaml"
@@ -159,7 +156,7 @@ class YAMLConfig:
             try:
                 with open(global_config_file, 'r') as f:
                     global_config = yaml.safe_load(f) or {}
-                    self.merge_config(global_config)
+                    self.config = global_config
             except Exception:
                 pass
         
@@ -606,13 +603,13 @@ class YAMLConfig:
         raw_exclusions = self.config.get("exclusions", {}) or {}
         
         if not isinstance(raw_exclusions, dict):
-            print(f"⚠️ Advertencia: Las exclusiones no son un diccionario válido. Usando exclusiones predeterminadas.")
-            return get_default_exclusions()
+            print(f"⚠️ Advertencia: Las exclusiones no son un diccionario válido.")
+            return {}
             
-        # Si no hay exclusiones configuradas, usar las predeterminadas
+        # Si no hay exclusiones configuradas, usar un diccionario vacío
         if not raw_exclusions:
-            print(f"ℹ️ No hay exclusiones configuradas. Usando exclusiones predeterminadas.")
-            return get_default_exclusions()
+            print(f"ℹ️ No hay exclusiones configuradas.")
+            return {}
         
         # Procesar exclusiones, eliminando las desactivadas (False)
         exclusions = {}
@@ -620,16 +617,11 @@ class YAMLConfig:
             if value is not False:  # Permitir desactivar exclusiones estableciéndolas a False
                 exclusions[key] = value
                 
-        # Si todas las exclusiones fueron desactivadas, usar las predeterminadas
-        if not exclusions:
-            print(f"⚠️ Todas las exclusiones fueron desactivadas. Usando exclusiones predeterminadas.")
-            return get_default_exclusions()
-                
         return exclusions
         
     def get_protected_files(self) -> List[str]:
         """
-        Obtiene la lista de archivos protegidos
+        Obtiene la lista de archivos protegidos que no deben eliminarse
         
         Returns:
             List[str]: Lista de patrones de archivos protegidos
@@ -682,91 +674,6 @@ class YAMLConfig:
                 
             print(f"{'   ' * indent}- {key}: {display_value}")
             
-    def save_default_config(self, output_path: Path):
-        """
-        Guarda la configuración predeterminada en un archivo YAML
-        
-        Args:
-            output_path: Ruta donde guardar el archivo
-        """
-        try:
-            with open(output_path, 'w') as file:
-                yaml.dump(self.config, file, default_flow_style=False, sort_keys=False)
-            print(f"✅ Configuración predeterminada guardada en {output_path}")
-        except Exception as e:
-            print(f"❌ Error al guardar configuración: {str(e)}")
-            
-    def generate_template(self, output_path: Path):
-        """
-        Genera un archivo de plantilla con comentarios explicativos
-        
-        Args:
-            output_path: Ruta donde guardar el archivo
-        """
-        # Copiar la plantilla desde el directorio de templates
-        template_path = self.deploy_tools_dir / "python" / "templates" / "ejemplo.yaml"
-        if template_path.exists():
-            try:
-                import shutil
-                shutil.copy2(template_path, output_path)
-                print(f"✅ Plantilla de configuración generada en {output_path}")
-            except Exception as e:
-                print(f"❌ Error al generar plantilla: {str(e)}")
-        else:
-            if self.verbose:
-                print(f"❌ No se encontró el archivo de plantilla: {template_path}")
-            self.save_default_config(output_path)
-
-    def get_default_config(self) -> Dict[str, Any]:
-        """
-        Crea una estructura de configuración predeterminada
-        
-        Returns:
-            Dict[str, Any]: Configuración predeterminada
-        """
-        return {
-            "ssh": {
-                "remote_host": "example-server",
-                "remote_path": "/home/user/webapps/example/",
-                "local_path": "app/public",
-            },
-            "security": {
-                "production_safety": "enabled",
-                "backups": "enabled",
-            },
-            "database": {
-                "remote": {
-                    "host": "localhost",
-                    "name": "",
-                    "user": "",
-                    "password": "",
-                },
-                "local": {
-                    "host": "db",
-                    "name": "db",
-                    "user": "db",
-                    "password": "db",
-                },
-            },
-            "urls": {
-                "remote": "https://example.com",
-                "local": "https://example.ddev.site",
-            },
-            "media": {
-                "url": "",
-                "expert_mode": False,
-                "path": "../media",
-            },
-            "ddev": {
-                "webroot": "/var/www/html/app/public",
-            },
-            "wp_cli": {
-                "memory_limit": "512M",
-            },
-            "exclusions": get_default_exclusions(),
-            "protected_files": get_protected_files(),
-        }
-        
     def get_wp_memory_limit(self) -> str:
         """
         Obtiene el límite de memoria para PHP de WP-CLI
@@ -807,28 +714,6 @@ def get_yaml_config(verbose=False):
         _config_instance = YAMLConfig(verbose=verbose)
         
     return _config_instance
-
-def create_default_config(verbose: bool = False):
-    """
-    Crea un archivo de configuración YAML predeterminado
-    
-    Args:
-        verbose: Si es True, muestra mensajes de depuración detallados
-    """
-    config = YAMLConfig(verbose=verbose)
-    output_path = Path.cwd() / "wp-deploy.yaml"
-    config.save_default_config(output_path)
-    
-def generate_template_config(verbose: bool = False):
-    """
-    Genera un archivo de plantilla YAML con comentarios explicativos
-    
-    Args:
-        verbose: Si es True, muestra mensajes de depuración detallados
-    """
-    config = YAMLConfig(verbose=verbose)
-    output_path = Path.cwd() / "wp-deploy.yaml"
-    config.generate_template(output_path)
 
 def get_nested(config_or_dict: Any, section: str, key: str, default: Any = None) -> Any:
     """

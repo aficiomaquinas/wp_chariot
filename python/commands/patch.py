@@ -18,7 +18,7 @@ from typing import Dict, List, Any, Optional, Tuple, Union, Set
 
 from config_yaml import get_yaml_config, get_nested
 from utils.ssh import SSHClient
-from utils.filesystem import ensure_dir_exists, create_backup, get_default_exclusions
+from utils.filesystem import ensure_dir_exists, create_backup
 from utils.wp_cli import get_item_version_from_path
 
 # Estados de parches

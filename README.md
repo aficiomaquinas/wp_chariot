@@ -699,3 +699,148 @@ The project now focuses on:
 ## License
 
 This project is free software under the [MIT](LICENSE) license.
+
+## Development and Refactoring Plan
+
+The wp_chariot codebase is undergoing continuous improvement to enhance maintainability and reduce technical debt while preserving its functionality and compatibility.
+
+### Current Structure and Identified Issues
+
+#### Project Structure
+```
+wp_chariot/
+├── python/
+    ├── cli.py                    # CLI entry point (714 lines)
+    ├── commands/                 # Available commands
+    │   ├── patch.py              # Patch application (1410 lines)
+    │   ├── database.py           # Database synchronization (743 lines)
+    │   ├── sync.py               # File synchronization (686 lines)
+    │   ├── media.py              # Media path management (442 lines)
+    │   ├── diff.py               # Show differences
+    │   ├── patch_cli.py          # Patch CLI utilities
+    │   ├── wp_cli.py             # WP CLI command utilities
+    │   └── __init__.py
+    ├── sync/                     # Synchronization modules
+    │   ├── files.py              # File synchronization
+    │   └── __init__.py
+    ├── utils/                    # Shared utilities
+    │   ├── ssh.py                # SSH operations (374 lines)
+    │   ├── wp_cli.py             # WP-CLI operations (622 lines)
+    │   ├── filesystem.py         # Filesystem operations
+    │   └── __init__.py
+    ├── config_yaml.py            # YAML configuration mgmt (857 lines)
+    ├── config.py                 # Configuration system
+    ├── setup.py                  # Installation configuration
+    ├── __init__.py               # Package initialization
+    └── requirements.txt          # Dependencies
+```
+
+#### Identified Issues
+
+1. **Large Files**: Several files exceed 500 lines, making maintenance difficult
+   - `commands/patch.py` (1410 lines)
+   - `config_yaml.py` (857 lines)
+   - `commands/database.py` (743 lines)
+   - `cli.py` (714 lines)
+   - `commands/sync.py` (686 lines)
+   - `utils/wp_cli.py` (622 lines)
+
+2. **Circular Dependencies**: Between configuration and utilities
+   - `config_yaml.py` imports from `utils/filesystem.py`
+   - Multiple modules import from both
+
+3. **Duplicated Code**:
+   - SSH/DDEV execution logic duplicated across files
+   - Similar command execution patterns repeated in many places
+   - WP-CLI command execution contains significant duplication
+
+4. **Configuration Management**:
+   - Default values defined in utility modules instead of configuration
+   - `get_protected_files()` and `get_default_exclusions()` should be part of configuration
+
+### Refactoring Plan
+
+#### Phase 1: Eliminating Circular Dependencies and Duplication
+
+##### 1.1 Consolidate Default Values in Configuration System ✅
+- ✅ Removed `get_protected_files()` and `get_default_exclusions()` from `utils/filesystem.py`
+- ✅ Eliminated hardcoded default configuration values completely
+- ✅ Simplified configuration loading to avoid generating default values
+- ✅ Removed methods for creating default configuration to enforce a single source of truth
+- ✅ Made system more predictable by failing explicitly when configuration is missing
+- ✅ Updated all imports across the codebase to maintain compatibility
+- ✅ Fixed CLI to remove references to removed functionality
+
+This first phase establishes the philosophy that configuration should be explicit and consistent, reinforcing the principle that there should be a single source of truth for all configuration values.
+
+##### 1.2 Extract Repeated WP-CLI Execution Code
+- Identify repeated code patterns in `utils/wp_cli.py`
+- Create helper functions to consolidate DDEV and SSH execution logic:
+```python
+def _execute_ddev_command(command, path, wp_path, memory_limit):
+    # Extract existing logic for DDEV command execution
+    
+def _execute_ssh_command(command, remote_host, remote_path, memory_limit):
+    # Extract existing logic for SSH command execution
+```
+- Refactor `run_wp_cli()` to use these helper functions
+- Ensure backward compatibility with existing function calls
+
+#### Phase 2: Breaking Down Large Files
+
+##### 2.1 Split `commands/patch.py` (1410 lines)
+- Create new module: `commands/patch_utils.py` 
+- Extract utility functions:
+  - Patch detection functions
+  - Checksum calculation
+  - File comparison logic
+- Keep main command functionality in the original file
+- Update imports to maintain compatibility
+
+##### 2.2 Extract Helper Functions from `config_yaml.py` (857 lines)
+- Create `config_utils.py` for helper functions
+- Move YAML parsing and loading utilities
+- Preserve the main class interface for backward compatibility
+
+##### 2.3 Refactor `commands/database.py` (743 lines)
+- Extract database export/import operations to `database_operations.py`
+- Separate MySQL/MariaDB specific code
+- Clean up command handling while maintaining the interface
+
+#### Phase 3: Consolidating SSH/DDEV Logic
+
+##### 3.1 Refactor DDEV-Related Code
+- Create `utils/ddev_helper.py` for DDEV operations
+- Consolidate all DDEV command execution
+- Create utility functions for common DDEV tasks:
+  - Checking DDEV status
+  - Executing commands within DDEV
+  - Managing WordPress inside DDEV
+
+##### 3.2 Encapsulate SSH Operations
+- Refactor to encapsulate and reuse SSH functionality
+- Centralize SSH command execution to avoid duplication
+- The core SSH commands are similar across the codebase, differing only in the wrapper
+- Focus on code reuse rather than adding new functionality
+- Maintain the current interface while reducing duplicated SSH code
+
+#### Phase 4: General Cleanup
+
+##### 4.1 Code Cleanup
+- Remove unused or commented code
+- Improve variable and function naming
+- Consolidate constants
+
+##### 4.2 Documentation Enhancement
+- Add or improve docstrings for all public functions
+- Document parameters consistently
+- Add examples where appropriate
+
+### Implementation Approach
+
+1. **Incremental Changes**: Each change will be implemented separately to minimize risk
+2. **Maintain Backward Compatibility**: No changes will break existing functionality
+3. **Testing**: Each change will be tested thoroughly before moving to the next
+4. **Focus on Quick Wins**: Initial phases focus on high-impact, low-risk changes
+
+This refactoring plan aims to improve code maintainability and reduce technical debt while ensuring the codebase remains stable and compatible with existing workflows.
