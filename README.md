@@ -758,6 +758,24 @@ wp_chariot/
    - Default values defined in utility modules instead of configuration
    - `get_protected_files()` and `get_default_exclusions()` should be part of configuration
 
+### Core Design Principles
+
+Throughout the refactoring process, the following design principles are being applied to improve code quality:
+
+#### Fail Fast Principle
+
+The codebase embraces the "fail fast" philosophy:
+- Fail explicitly when critical configuration is missing, rather than guessing or inferring values
+- Avoid "magic" default values that may cause unexpected behaviors
+- Maintain idempotency: same input must always produce the same output
+- Provide clear error messages that explain why something failed and how to fix it
+
+This approach:
+1. **Improves Debugging**: Errors are immediately visible and diagnoses are more straightforward
+2. **Reduces Silent Failures**: No more hidden side effects or unexpected behaviors
+3. **Enforces Proper Configuration**: Users must provide required values explicitly
+4. **Makes Systems More Predictable**: Behavior is consistent and well-defined at all times
+
 ### Refactoring Plan
 
 #### Phase 1: Eliminating Circular Dependencies and Duplication
@@ -773,18 +791,25 @@ wp_chariot/
 
 This first phase establishes the philosophy that configuration should be explicit and consistent, reinforcing the principle that there should be a single source of truth for all configuration values.
 
-##### 1.2 Extract Repeated WP-CLI Execution Code
-- Identify repeated code patterns in `utils/wp_cli.py`
-- Create helper functions to consolidate DDEV and SSH execution logic:
-```python
-def _execute_ddev_command(command, path, wp_path, memory_limit):
-    # Extract existing logic for DDEV command execution
-    
-def _execute_ssh_command(command, remote_host, remote_path, memory_limit):
-    # Extract existing logic for SSH command execution
-```
-- Refactor `run_wp_cli()` to use these helper functions
-- Ensure backward compatibility with existing function calls
+##### 1.2 Extract Repeated WP-CLI Execution Code ✅
+- ✅ Identified repeated code patterns in `utils/wp_cli.py`
+- ✅ Created helper functions to consolidate DDEV and SSH execution logic:
+  - ✅ `_format_wp_command()`: Formats command string for shell execution
+  - ✅ `_get_ddev_wp_path()`: Gets WordPress path within DDEV container
+  - ✅ `_execute_ddev_command()`: Executes WP-CLI commands via DDEV
+  - ✅ `_execute_ssh_command()`: Executes WP-CLI commands remotely via SSH
+  - ✅ `_execute_direct_command()`: Executes WP-CLI commands locally without DDEV
+- ✅ Refactored `run_wp_cli()` to use these helper functions
+- ✅ Implemented "fail fast" principle in WP-CLI utilities
+- ✅ Maintained backward compatibility with existing function calls
+- ✅ Added documentation explaining the fail-fast philosophy in the code
+
+Key improvements in this phase:
+1. Reduced code duplication significantly
+2. Made the code more maintainable with smaller, focused functions
+3. Improved error handling with clear error messages
+4. Enforced the "fail fast" principle in configuration handling
+5. Maintained the public interface to ensure backward compatibility
 
 #### Phase 2: Breaking Down Large Files
 

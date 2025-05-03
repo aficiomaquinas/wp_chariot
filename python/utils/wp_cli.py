@@ -1,5 +1,15 @@
 """
 Utilidades para interactuar con WP-CLI desde Python
+
+Este módulo sigue la filosofía de diseño "fail fast":
+- Fallar explícitamente cuando falta información crítica, en lugar de adivinar o inferir
+- No usar valores predeterminados "mágicos" que puedan causar comportamientos inesperados
+- Mantener la idempotencia: la misma entrada debe producir siempre la misma salida
+- Proporcionar mensajes de error claros que expliquen por qué falló y cómo resolverlo
+
+La configuración explícita es un requisito, no una opción. Si un parámetro crítico
+como la ruta de WordPress dentro del contenedor DDEV no está especificado, el sistema
+fallará en lugar de intentar adivinarlo.
 """
 
 import os
@@ -10,6 +20,154 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union, Literal
 
 from config_yaml import get_yaml_config, get_nested
+
+def _format_wp_command(command: List[str]) -> str:
+    """
+    Formatea una lista de comandos para su ejecución segura en shell
+    
+    Args:
+        command: Lista con el comando y sus argumentos
+        
+    Returns:
+        str: Comando formateado para shell
+    """
+    return " ".join([f"'{arg}'" if ' ' in arg else arg for arg in command])
+
+def _get_ddev_wp_path(config, wp_path: Optional[str] = None) -> str:
+    """
+    Obtiene la ruta de WordPress dentro del contenedor DDEV
+    
+    Sigue el principio "fail fast": si no se encuentra una ruta explícita,
+    falla inmediatamente en lugar de intentar inferirla.
+    
+    Args:
+        config: Configuración del proyecto
+        wp_path: Ruta personalizada (opcional)
+        
+    Returns:
+        str: Ruta de WordPress dentro del contenedor DDEV
+        
+    Raises:
+        ValueError: Si no se puede determinar la ruta de WordPress
+    """
+    # Si se proporciona una ruta explícita, usarla
+    if wp_path:
+        return wp_path
+        
+    # Intentar obtener la ruta del contenedor DDEV desde la configuración
+    ddev_wp_path = get_nested(config, "ddev", "webroot")
+    
+    # Si no está en la configuración, fallar explícitamente
+    if not ddev_wp_path:
+        raise ValueError("No se ha especificado la ruta de WordPress (webroot) en la configuración DDEV. Este es un parámetro obligatorio para la ejecución de comandos WP-CLI.")
+            
+    return ddev_wp_path
+
+def _execute_ddev_command(command: List[str], path: Union[str, Path], wp_path: Optional[str] = None, 
+                         memory_limit: str = "512M") -> Tuple[int, str, str]:
+    """
+    Ejecuta un comando WP-CLI usando DDEV
+    
+    Implementa el principio "fail fast": si no se puede determinar una ruta de WordPress válida,
+    falla explícitamente en lugar de continuar con valores predeterminados o inferidos.
+    
+    Args:
+        command: Lista con el comando y sus argumentos
+        path: Ruta al directorio de WordPress
+        wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        memory_limit: Límite de memoria para PHP
+        
+    Returns:
+        Tuple[int, str, str]: Código de salida, salida estándar, error estándar
+    """
+    config = get_yaml_config()
+    
+    try:
+        ddev_wp_path = _get_ddev_wp_path(config, wp_path)
+    except ValueError as e:
+        # Propagar el error según el principio "fail fast"
+        return 1, "", str(e)
+    
+    wp_cmd_str = _format_wp_command(command)
+    
+    # Añadir límite de memoria al comando
+    cmd = ["ddev", "exec", f"cd {ddev_wp_path} && php -d memory_limit={memory_limit} $(which wp) {wp_cmd_str}"]
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(path),
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        return result.returncode, result.stdout, result.stderr
+    except Exception as e:
+        return 1, "", str(e)
+
+def _execute_direct_command(command: List[str], path: Union[str, Path], 
+                           memory_limit: str = "512M") -> Tuple[int, str, str]:
+    """
+    Ejecuta un comando WP-CLI directamente (sin DDEV)
+    
+    Args:
+        command: Lista con el comando y sus argumentos
+        path: Ruta al directorio de WordPress
+        memory_limit: Límite de memoria para PHP
+        
+    Returns:
+        Tuple[int, str, str]: Código de salida, salida estándar, error estándar
+    """
+    wp_cmd = ["wp"] + command
+    
+    try:
+        # Intentar configurar el entorno con el límite de memoria
+        env = os.environ.copy()
+        env["PHP_MEMORY_LIMIT"] = memory_limit
+        
+        result = subprocess.run(
+            wp_cmd,
+            cwd=str(path),
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env
+        )
+        return result.returncode, result.stdout, result.stderr
+    except Exception as e:
+        return 1, "", str(e)
+
+def _execute_ssh_command(command: List[str], remote_host: str, remote_path: str, 
+                        memory_limit: str = "512M") -> Tuple[int, str, str]:
+    """
+    Ejecuta un comando WP-CLI en un servidor remoto via SSH
+    
+    Args:
+        command: Lista con el comando y sus argumentos
+        remote_host: Host remoto
+        remote_path: Ruta remota
+        memory_limit: Límite de memoria para PHP
+        
+    Returns:
+        Tuple[int, str, str]: Código de salida, salida estándar, error estándar
+    """
+    if not remote_host or not remote_path:
+        return 1, "", "Se requiere host y ruta remotos para ejecutar WP-CLI en el servidor"
+        
+    # Añadir el límite de memoria a los comandos PHP
+    php_memory_cmd = f"php -d memory_limit={memory_limit}"
+    ssh_cmd = ["ssh", remote_host, f"cd {remote_path} && {php_memory_cmd} $(which wp) {' '.join(command)}"]
+    
+    try:
+        result = subprocess.run(
+            ssh_cmd,
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        return result.returncode, result.stdout, result.stderr
+    except Exception as e:
+        return 1, "", str(e)
 
 def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False, 
               remote_host: Optional[str] = None, remote_path: Optional[str] = None,
@@ -38,86 +196,16 @@ def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False,
     if memory_limit is None:
         memory_limit = config.get_wp_memory_limit()
     
-    if not remote:
-        # Comando local
-        if use_ddev:
-            # Usar ddev para ejecutar wp-cli
-            wp_cmd_str = " ".join([f"'{arg}'" if ' ' in arg else arg for arg in command])
-            
-            # Obtener la ruta de WordPress dentro de DDEV desde la configuración
-            ddev_wp_path = wp_path
-            
-            if not ddev_wp_path:
-                # Intentar obtener la ruta del contenedor DDEV desde la configuración
-                ddev_wp_path = get_nested(config, "ddev", "webroot")
-                # Si no está en la configuración, usar la parte final de local_path
-                if not ddev_wp_path:
-                    local_path = get_nested(config, "ssh", "local_path", "")
-                    # La ruta local típicamente termina en /app/public/ o similar
-                    # Vamos a extraer solo la parte final para usarla en DDEV
-                    if "/app/public" in local_path:
-                        ddev_wp_path = "/var/www/html/app/public"
-                    else:
-                        # Si no podemos inferir la ruta, usar el valor predeterminado
-                        ddev_wp_path = "/var/www/html"
-            
-            # Añadir límite de memoria al comando
-            cmd = ["ddev", "exec", f"cd {ddev_wp_path} && php -d memory_limit={memory_limit} $(which wp) {wp_cmd_str}"]
-            
-            try:
-                result = subprocess.run(
-                    cmd,
-                    cwd=str(path),
-                    capture_output=True,
-                    text=True,
-                    check=False
-                )
-                return result.returncode, result.stdout, result.stderr
-            except Exception as e:
-                return 1, "", str(e)
-        else:
-            # Ejecutar wp-cli directamente
-            wp_cmd = ["wp"] + command
-            
-            try:
-                # Intentar configurar el entorno con el límite de memoria
-                env = os.environ.copy()
-                env["PHP_MEMORY_LIMIT"] = memory_limit
-                
-                result = subprocess.run(
-                    wp_cmd,
-                    cwd=str(path),
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    env=env
-                )
-                return result.returncode, result.stdout, result.stderr
-            except Exception as e:
-                return 1, "", str(e)
+    # Ejecutar comando según el entorno
+    if remote:
+        # Comando remoto via SSH
+        return _execute_ssh_command(command, remote_host, remote_path, memory_limit)
+    elif use_ddev:
+        # Comando local usando DDEV
+        return _execute_ddev_command(command, path, wp_path, memory_limit)
     else:
-        # Comando remoto
-        if not remote_host or not remote_path:
-            return 1, "", "Se requiere host y ruta remotos para ejecutar WP-CLI en el servidor"
-            
-        # Construir comando SSH con aumento de límite de memoria para PHP
-        wp_cmd = ["wp"] + command
-        wp_cmd_str = " ".join([f"'{arg}'" if ' ' in arg else arg for arg in wp_cmd])
-        
-        # Añadir el límite de memoria a los comandos PHP
-        php_memory_cmd = f"php -d memory_limit={memory_limit}"
-        ssh_cmd = ["ssh", remote_host, f"cd {remote_path} && {php_memory_cmd} $(which wp) {' '.join(command)}"]
-        
-        try:
-            result = subprocess.run(
-                ssh_cmd,
-                capture_output=True,
-                text=True,
-                check=False
-            )
-            return result.returncode, result.stdout, result.stderr
-        except Exception as e:
-            return 1, "", str(e)
+        # Comando local directo
+        return _execute_direct_command(command, path, memory_limit)
 
 def is_plugin_installed(plugin_slug: str, path: Union[str, Path], remote: bool = False,
                        remote_host: Optional[str] = None, remote_path: Optional[str] = None,
