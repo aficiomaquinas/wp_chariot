@@ -13,44 +13,346 @@ from typing import Dict, List, Any, Optional
 import copy
 import re
 
-from wp_deploy.utils.filesystem import get_default_exclusions, get_protected_files
+from utils.filesystem import get_default_exclusions, get_protected_files
 
 class YAMLConfig:
     """
-    Clase para manejar la configuración del sistema usando YAML.
-    Carga variables desde archivos YAML y proporciona acceso a ellas.
+    Clase para gestionar configuración basada en YAML, con soporte para múltiples sitios
     """
     
-    def __init__(self, project_root: Optional[Path] = None, verbose: bool = False):
+    def __init__(self, verbose=False):
         """
-        Inicializa el objeto de configuración.
+        Inicializa configuración desde archivo YAML
         
         Args:
-            project_root: Ruta raíz del proyecto. Si es None, se detecta automáticamente.
-            verbose: Si es True, muestra mensajes de depuración detallados
+            verbose (bool): Activar modo detallado
         """
-        # Definir el directorio raíz del proyecto
-        if project_root is None:
-            # Intentar detectar la raíz del proyecto
-            self.project_root = self._detect_project_root()
-        else:
-            self.project_root = project_root
-            
-        # Guarda el nivel de verbosidad
         self.verbose = verbose
-            
-        # Directorio de herramientas de despliegue
-        self.deploy_tools_dir = self.project_root / "deploy-tools"
+        self.config = {}
+        self.sites = {}
+        self.current_site = None
+        self.default_site = None
         
-        # Inicializar la configuración con los valores predeterminados
+        # Detectar directorio del proyecto y de deploy-tools
+        self.detect_project_roots()
+        
+        # Cargar configuración
+        self.load_config()
+        
+        # Detectar y cargar configuración multi-sitio
+        self.load_sites_config()
+        
+        # Seleccionar automáticamente el sitio por defecto si existe
+        if self.default_site and self.default_site in self.sites:
+            self.set_current_site(self.default_site)
+            if self.verbose:
+                print(f"✅ Sitio por defecto seleccionado automáticamente: {self.default_site}")
+        
+    def detect_project_roots(self):
+        """
+        Detecta la estructura de directorios del proyecto y de deploy-tools
+        """
+        # Detectar deploy-tools
+        current_file = Path(__file__).resolve()
+        # config_yaml.py -> python -> deploy-tools
+        self.deploy_tools_dir = current_file.parent.parent
+        
+        # Si estamos ejecutando desde dentro de deploy-tools
+        if "deploy-tools" in str(self.deploy_tools_dir):
+            # El directorio del proyecto es el padre de deploy-tools
+            self.project_root = self.deploy_tools_dir.parent
+        else:
+            # En caso de que el paquete se instale como biblioteca y no esté en la estructura deploy-tools
+            # Usar el directorio actual como raíz del proyecto
+            self.project_root = Path.cwd()
+        
+        if self.verbose:
+            print(f"Detectado directorio de proyecto: {self.project_root}")
+            print(f"Detectado directorio de deploy-tools: {self.deploy_tools_dir}")
+
+    def load_config(self):
+        """
+        Carga la configuración desde archivos YAML
+        """
+        # Configuración global (dentro de deploy-tools)
+        global_config_file = self.deploy_tools_dir / "python" / "config.yaml"
+        
+        # Configuración de proyecto (en la raíz del proyecto)
+        project_config_file = self.project_root / "wp-deploy.yaml"
+        
+        # Cargar configuración predeterminada
+        default_config = self.get_default_config()
+        self.config = default_config
+        
+        # Cargar configuración global si existe
+        if global_config_file.exists():
+            try:
+                with open(global_config_file, 'r') as f:
+                    global_config = yaml.safe_load(f) or {}
+                    # Fusionar con la configuración por defecto
+                    self.merge_config(global_config)
+                if self.verbose:
+                    print(f"Configuración global cargada desde: {global_config_file}")
+            except Exception as e:
+                print(f"Error al cargar configuración global: {str(e)}")
+                
+        # Cargar configuración del proyecto si existe
+        if project_config_file.exists():
+            try:
+                with open(project_config_file, 'r') as f:
+                    project_config = yaml.safe_load(f) or {}
+                    # Fusionar con la configuración existente
+                    self.merge_config(project_config)
+                if self.verbose:
+                    print(f"Configuración de proyecto cargada desde: {project_config_file}")
+            except Exception as e:
+                print(f"Error al cargar configuración de proyecto: {str(e)}")
+    
+    def load_sites_config(self):
+        """
+        Carga la configuración de múltiples sitios
+        """
+        sites_config_file = self.deploy_tools_dir / "python" / "sites.yaml"
+        
+        if sites_config_file.exists():
+            try:
+                with open(sites_config_file, 'r') as f:
+                    sites_config = yaml.safe_load(f) or {}
+                    
+                # Extraer listado de sitios
+                self.sites = sites_config.get("sites", {})
+                self.default_site = sites_config.get("default", None)
+                
+                if self.verbose:
+                    print(f"Configuración de sitios cargada: {len(self.sites)} sitios encontrados")
+                    if self.default_site:
+                        print(f"Sitio por defecto: {self.default_site}")
+            except Exception as e:
+                print(f"Error al cargar configuración de sitios: {str(e)}")
+    
+    def set_current_site(self, site_alias):
+        """
+        Establece el sitio actual a usar
+        
+        Args:
+            site_alias: Alias del sitio a usar
+            
+        Returns:
+            bool: True si el sitio existe y se estableció correctamente
+        """
+        if site_alias not in self.sites:
+            print(f"❌ Error: Sitio '{site_alias}' no encontrado en la configuración")
+            return False
+        
+        # Guardar el nombre del sitio actual
+        self.current_site = site_alias
+        
+        # Cargar la configuración del sitio
+        site_config = self.sites[site_alias]
+        
+        # Resetear la configuración actual a los valores por defecto
         self.config = self.get_default_config()
         
-        # Ajustar rutas específicas del proyecto
-        self.config["ssh"]["local_path"] = str(self.project_root / "app" / "public")
+        # Cargar configuración global
+        global_config_file = self.deploy_tools_dir / "python" / "config.yaml"
+        if global_config_file.exists():
+            try:
+                with open(global_config_file, 'r') as f:
+                    global_config = yaml.safe_load(f) or {}
+                    self.merge_config(global_config)
+            except Exception:
+                pass
         
-        # Cargar configuración desde archivos YAML
-        self._load_config()
+        # Aplicar la configuración específica del sitio
+        self.merge_config(site_config)
         
+        if self.verbose:
+            print(f"✅ Sitio actual establecido a: {site_alias}")
+        
+        return True
+    
+    def get_available_sites(self):
+        """
+        Obtiene la lista de sitios disponibles
+        
+        Returns:
+            dict: Diccionario con los sitios disponibles
+        """
+        return self.sites
+    
+    def get_default_site(self):
+        """
+        Obtiene el sitio por defecto
+        
+        Returns:
+            str: Alias del sitio por defecto o None si no hay
+        """
+        return self.default_site
+    
+    def select_site(self, site_alias=None):
+        """
+        Selecciona un sitio para usar
+        
+        Args:
+            site_alias: Alias del sitio a usar (opcional)
+            
+        Returns:
+            bool: True si el sitio se seleccionó correctamente
+        """
+        # Si no se especifica un sitio, intentar determinar automáticamente
+        if not site_alias:
+            # Si solo hay un sitio, usarlo
+            if len(self.sites) == 1:
+                site_alias = list(self.sites.keys())[0]
+                if self.verbose:
+                    print(f"ℹ️ Sitio único seleccionado automáticamente: {site_alias}")
+            # Si hay más de uno y hay uno por defecto, usar ese
+            elif self.default_site and self.default_site in self.sites:
+                site_alias = self.default_site
+                if self.verbose:
+                    print(f"ℹ️ Sitio por defecto seleccionado: {site_alias}")
+            # Si no hay un sitio por defecto y hay múltiples sitios, error
+            elif len(self.sites) > 1:
+                print("❌ Error: Múltiples sitios disponibles. Especifica uno con --site ALIAS")
+                print("   Sitios disponibles:")
+                for alias in self.sites.keys():
+                    default_mark = " (por defecto)" if alias == self.default_site else ""
+                    print(f"   - {alias}{default_mark}")
+                return False
+            # Si no hay sitios configurados, continuar con la configuración actual
+            else:
+                if self.verbose:
+                    print("ℹ️ No hay sitios configurados. Usando configuración actual.")
+                return True
+        
+        # Intentar establecer el sitio seleccionado
+        if site_alias:
+            return self.set_current_site(site_alias)
+        
+        return True
+    
+    def create_sites_config(self, default_site=None):
+        """
+        Crea un archivo de configuración de sitios vacío
+        
+        Args:
+            default_site: Sitio por defecto (opcional)
+            
+        Returns:
+            bool: True si se creó correctamente
+        """
+        sites_config_file = self.deploy_tools_dir / "python" / "sites.yaml"
+        
+        # Plantilla inicial
+        template = {
+            "default": default_site,
+            "sites": {}
+        }
+        
+        # Si ya hay sitios configurados, mantenerlos
+        if hasattr(self, 'sites') and self.sites:
+            template["sites"] = self.sites
+        
+        # Escribir configuración
+        try:
+            with open(sites_config_file, 'w') as f:
+                yaml.dump(template, f, default_flow_style=False, sort_keys=False)
+            print(f"✅ Archivo de configuración de sitios creado: {sites_config_file}")
+            return True
+        except Exception as e:
+            print(f"❌ Error al crear archivo de configuración de sitios: {str(e)}")
+            return False
+    
+    def add_site(self, alias, config=None, is_default=False):
+        """
+        Añade un nuevo sitio a la configuración
+        
+        Args:
+            alias: Alias del sitio
+            config: Configuración del sitio (opcional)
+            is_default: Si es el sitio por defecto
+            
+        Returns:
+            bool: True si se añadió correctamente
+        """
+        sites_config_file = self.deploy_tools_dir / "python" / "sites.yaml"
+        
+        # Cargar configuración actual
+        self.load_sites_config()
+        
+        # Si no se proporciona una configuración, usar la actual
+        if not config:
+            config = self.config
+        
+        # Añadir/actualizar el sitio
+        self.sites[alias] = config
+        
+        # Actualizar sitio por defecto si es necesario
+        if is_default:
+            self.default_site = alias
+        
+        # Guardar configuración
+        template = {
+            "default": self.default_site,
+            "sites": self.sites
+        }
+        
+        try:
+            with open(sites_config_file, 'w') as f:
+                yaml.dump(template, f, default_flow_style=False, sort_keys=False)
+            print(f"✅ Sitio '{alias}' añadido/actualizado correctamente")
+            
+            if is_default:
+                print(f"✅ '{alias}' establecido como sitio por defecto")
+                
+            return True
+        except Exception as e:
+            print(f"❌ Error al guardar configuración de sitios: {str(e)}")
+            return False
+    
+    def remove_site(self, alias):
+        """
+        Elimina un sitio de la configuración
+        
+        Args:
+            alias: Alias del sitio a eliminar
+            
+        Returns:
+            bool: True si se eliminó correctamente
+        """
+        sites_config_file = self.deploy_tools_dir / "python" / "sites.yaml"
+        
+        # Cargar configuración actual
+        self.load_sites_config()
+        
+        # Verificar si el sitio existe
+        if alias not in self.sites:
+            print(f"❌ Error: Sitio '{alias}' no encontrado")
+            return False
+        
+        # Eliminar el sitio
+        del self.sites[alias]
+        
+        # Si era el sitio por defecto, quitar esa configuración
+        if self.default_site == alias:
+            self.default_site = None
+            print(f"ℹ️ El sitio eliminado era el sitio por defecto. Ya no hay sitio por defecto.")
+        
+        # Guardar configuración
+        template = {
+            "default": self.default_site,
+            "sites": self.sites
+        }
+        
+        try:
+            with open(sites_config_file, 'w') as f:
+                yaml.dump(template, f, default_flow_style=False, sort_keys=False)
+            print(f"✅ Sitio '{alias}' eliminado correctamente")
+            return True
+        except Exception as e:
+            print(f"❌ Error al guardar configuración de sitios: {str(e)}")
+            return False
+
     def _detect_project_root(self) -> Path:
         """
         Detecta la raíz del proyecto WordPress.
@@ -361,14 +663,13 @@ class YAMLConfig:
         """
         for key, value in data.items():
             # Ocultar contraseñas y valores sensibles (los valores reales se usan internamente)
-            # NOTA IMPORTANTE: Por seguridad, se muestran valores de ejemplo en lugar de las credenciales reales
             if "password" in key.lower() or "pass" in key.lower():
-                display_value = "********"
+                display_value = "***********"
             # Ocultar credenciales de base de datos para mayor seguridad
             elif key == "name" and isinstance(data.get("password"), str):
-                display_value = "nombre_db_remota"
+                display_value = "***********"
             elif key == "user" and isinstance(data.get("password"), str):
-                display_value = "usuario_db_remota"
+                display_value = "***********"
             elif key == "host" and isinstance(data.get("password"), str):
                 # Mantener el host visible ya que no es sensible
                 display_value = value
@@ -475,24 +776,37 @@ class YAMLConfig:
         """
         return self.get("wp_cli", "memory_limit", "512M")
 
-# Instancia global de configuración
-_config: Optional[YAMLConfig] = None
+    def merge_config(self, config):
+        """
+        Fusiona la configuración proporcionada con la configuración actual
+        
+        Args:
+            config: Diccionario con la configuración a fusionar
+        """
+        if not config:
+            return
+            
+        self._update_dict_recursive(self.config, config)
 
-def get_yaml_config(verbose: bool = False) -> YAMLConfig:
+# Función global para obtener la configuración
+_config_instance = None
+
+def get_yaml_config(verbose=False):
     """
-    Obtiene la instancia global de configuración YAML.
-    Si aún no existe, la crea.
+    Obtiene la instancia única de la configuración
     
     Args:
-        verbose: Si es True, muestra mensajes de depuración detallados
-    
+        verbose: Si es True, muestra información adicional
+        
     Returns:
-        YAMLConfig: Instancia de configuración
+        YAMLConfig: Instancia de la configuración
     """
-    global _config
-    if _config is None:
-        _config = YAMLConfig(verbose=verbose)
-    return _config
+    global _config_instance
+    
+    if not _config_instance:
+        _config_instance = YAMLConfig(verbose=verbose)
+        
+    return _config_instance
 
 def create_default_config(verbose: bool = False):
     """

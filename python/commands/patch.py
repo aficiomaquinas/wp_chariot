@@ -16,10 +16,10 @@ import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union, Set
 
-from wp_deploy.config_yaml import get_yaml_config, get_nested
-from wp_deploy.utils.ssh import SSHClient
-from wp_deploy.utils.filesystem import ensure_dir_exists, create_backup, get_default_exclusions
-from wp_deploy.utils.wp_cli import get_item_version_from_path
+from config_yaml import get_yaml_config, get_nested
+from utils.ssh import SSHClient
+from utils.filesystem import ensure_dir_exists, create_backup, get_default_exclusions
+from utils.wp_cli import get_item_version_from_path
 
 # Estados de parches
 PATCH_STATUS_PENDING = "PENDING"        # Registrado, no aplicado, checksum vigente
@@ -42,6 +42,12 @@ PATCH_STATUS_LABELS = {
 class PatchManager:
     """
     Clase para gestionar la aplicación de parches
+    
+    Notas:
+    - Los parches se gestionan por sitio, con un archivo de bloqueo específico para cada sitio.
+    - Si existe un archivo `patches.lock.json` general, se usará como punto de partida
+      para los sitios que no tengan un archivo específico.
+    - Los archivos de bloqueo de sitios se nombran como `patches-{sitename}.lock.json`.
     """
     
     def __init__(self):
@@ -62,8 +68,19 @@ class PatchManager:
         # Cargar configuración de seguridad
         self.production_safety = get_nested(self.config, "security", "production_safety") == "enabled"
         
+        # Determinar el sitio actual para el archivo lock específico por sitio
+        self.current_site = self.config.current_site
+        
+        # Generar el nombre del archivo lock: patches-sitename.lock.json si hay un sitio actual,
+        # o patches.lock.json si no hay sitio o es el predeterminado
+        lock_filename = "patches.lock.json"
+        if self.current_site:
+            lock_filename = f"patches-{self.current_site}.lock.json"
+        
+        # Crear la ruta al archivo lock (ahora solo dos niveles arriba con la estructura aplanada)
+        self.lock_file = Path(__file__).resolve().parent.parent / lock_filename
+        
         # Cargar archivo lock
-        self.lock_file = Path(__file__).resolve().parent.parent.parent / "patches.lock.json"
         self.lock_data = self.load_lock_file()
         
         # Cargar archivos protegidos
@@ -82,28 +99,41 @@ class PatchManager:
         Returns:
             Dict: Datos del archivo lock
         """
-        if not self.lock_file.exists():
-            # Crear estructura inicial del archivo lock
-            lock_data = {
-                "patches": {},
-                "last_updated": datetime.datetime.now().isoformat()
-            }
-            return lock_data
+        # Crear estructura inicial del archivo lock
+        lock_data = {
+            "patches": {},
+            "last_updated": datetime.datetime.now().isoformat()
+        }
+        
+        # Verificar si existe el archivo específico del sitio
+        if self.lock_file.exists():
+            try:
+                with open(self.lock_file, 'r') as f:
+                    lock_data = json.load(f)
+                    
+                print(f"✅ Archivo lock '{self.lock_file.name}' cargado: {len(lock_data.get('patches', {}))} parches registrados")
+                return lock_data
+            except Exception as e:
+                print(f"⚠️ Error al cargar archivo lock específico del sitio: {str(e)}")
+                print("   Se creará un nuevo archivo lock para este sitio.")
+        elif self.current_site:
+            # Si no existe el archivo específico del sitio pero sí el genérico,
+            # intentar cargar el archivo genérico y usarlo como base
+            generic_lock_file = Path(__file__).resolve().parent.parent / "patches.lock.json"
+            if generic_lock_file.exists():
+                try:
+                    with open(generic_lock_file, 'r') as f:
+                        lock_data = json.load(f)
+                        
+                    print(f"ℹ️ Usando archivo lock genérico como base: {len(lock_data.get('patches', {}))} parches encontrados")
+                    print(f"   Se guardará como '{self.lock_file.name}' para este sitio.")
+                    # No guardamos inmediatamente el archivo específico para evitar duplicar datos innecesariamente
+                except Exception as e:
+                    print(f"⚠️ Error al cargar archivo lock genérico: {str(e)}")
+        else:
+            print(f"ℹ️ No se encontró archivo lock. Se creará uno nuevo.")
             
-        try:
-            with open(self.lock_file, 'r') as f:
-                lock_data = json.load(f)
-                
-            print(f"✅ Archivo lock cargado: {len(lock_data.get('patches', {}))} parches registrados")
-            return lock_data
-            
-        except Exception as e:
-            print(f"⚠️ Error al cargar archivo lock: {str(e)}")
-            print("   Se creará un nuevo archivo lock.")
-            return {
-                "patches": {},
-                "last_updated": datetime.datetime.now().isoformat()
-            }
+        return lock_data
     
     def save_lock_file(self):
         """
@@ -113,10 +143,17 @@ class PatchManager:
             # Actualizar fecha de modificación
             self.lock_data["last_updated"] = datetime.datetime.now().isoformat()
             
+            # Asegurarnos de que el directorio padre existe
+            self.lock_file.parent.mkdir(parents=True, exist_ok=True)
+            
             with open(self.lock_file, 'w') as f:
                 json.dump(self.lock_data, f, indent=2)
                 
-            print(f"✅ Archivo lock actualizado: {self.lock_file}")
+            # Mostrar información sobre el sitio si es un archivo específico
+            if self.current_site:
+                print(f"✅ Archivo lock para el sitio '{self.current_site}' actualizado: {self.lock_file}")
+            else:
+                print(f"✅ Archivo lock general actualizado: {self.lock_file}")
         except Exception as e:
             print(f"⚠️ Error al guardar archivo lock: {str(e)}")
     
@@ -1206,6 +1243,44 @@ class PatchManager:
         # Estado por defecto
         return PATCH_STATUS_PENDING, details
 
+    def show_config_info(self, verbose: bool = False) -> None:
+        """
+        Muestra información de configuración del gestor de parches
+        
+        Args:
+            verbose: Si es True, muestra información adicional
+        """
+        print("\n🛠️ Configuración del gestor de parches:")
+        
+        # Información sobre el sitio
+        if self.current_site:
+            print(f"   • Sitio actual: {self.current_site}")
+        else:
+            print(f"   • Usando configuración general (sin sitio específico)")
+            
+        # Información sobre el archivo lock
+        print(f"   • Archivo de parches: {self.lock_file.name}")
+        if self.lock_file.exists():
+            print(f"     - Estado: Existe ({len(self.lock_data.get('patches', {}))} parches registrados)")
+            last_updated = self.lock_data.get("last_updated", "Desconocida")
+            print(f"     - Última actualización: {last_updated}")
+        else:
+            # Verificar si existe el archivo genérico
+            generic_lock_file = Path(__file__).resolve().parent.parent / "patches.lock.json"
+            if generic_lock_file.exists():
+                print(f"     - Estado: No existe (se usará el genérico: patches.lock.json)")
+            else:
+                print(f"     - Estado: No existe (se creará cuando sea necesario)")
+                
+        # Rutas relevantes
+        if verbose:
+            print(f"\n📂 Rutas:")
+            print(f"   • Ruta del archivo lock: {self.lock_file}")
+            print(f"   • Ruta local del sitio: {self.local_path}")
+            print(f"   • Servidor remoto: {self.remote_host}:{self.remote_path}")
+            
+        print("")
+
 def list_patches(verbose: bool = False):
     """
     Muestra la lista de parches disponibles con información detallada
@@ -1214,6 +1289,11 @@ def list_patches(verbose: bool = False):
         verbose: Si es True, muestra información adicional
     """
     manager = PatchManager()
+    
+    # En modo verbose, mostrar información de configuración
+    if verbose:
+        manager.show_config_info(verbose=True)
+    
     manager.list_patches(verbose=verbose)
     
 def add_patch(file_path: str, description: str = "") -> bool:

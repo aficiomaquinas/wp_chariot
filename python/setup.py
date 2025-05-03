@@ -4,9 +4,9 @@ with open("requirements.txt", "r") as f:
     requirements = f.read().splitlines()
 
 setup(
-    name="wp_deploy",
+    name="wp-deploy-tools",
     version="0.1.0",
-    packages=find_packages(),
+    packages=["commands", "utils", "sync", "tools"],
     include_package_data=True,
     install_requires=requirements,
     entry_points={

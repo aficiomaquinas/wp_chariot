@@ -25,7 +25,7 @@
       "local_version": "4.7.3"
     },
     "wp-content/themes/avalon/inc/block-patterns.php": {
-      "description": "Parche para block-patterns del tema Avalon",
+      "description": "Corregir error con función WP_Block_Patterns_Registry::register en el tema Avalon",
       "local_checksum": "b9a4222817eb226d4d316fb235114189",
       "registered_date": "2025-05-01T23:54:26.329419",
       "item_type": "theme",
@@ -39,6 +39,14 @@
       "item_type": "theme",
       "item_slug": "avalon",
       "local_version": "1.0.5"
+    },
+    "wp-content/plugins/product-blocks/classes/Blocks.php": {
+      "description": "Corregir error HTTP_HOST indefinido en Product Blocks",
+      "local_checksum": "6d7d34ac6b9bddb38103213448733e88",
+      "registered_date": "2025-05-01T12:51:14.409566",
+      "item_type": "plugin",
+      "item_slug": "product-blocks",
+      "local_version": ""
     }
   },
   "last_updated": "2025-05-01T23:54:36.172859"

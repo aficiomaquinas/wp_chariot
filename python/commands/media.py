@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple, Dict
 
-from wp_deploy.utils.wp_cli import (
+from utils.wp_cli import (
     run_wp_cli,
     update_option,
     flush_cache,
@@ -22,7 +22,7 @@ from wp_deploy.utils.wp_cli import (
     activate_plugin,
     is_wordpress_installed
 )
-from wp_deploy.config_yaml import get_yaml_config, get_nested
+from config_yaml import get_yaml_config, get_nested
 
 # Plugin requerido para medios originales
 MEDIA_PLUGIN = "wp-original-media-path"

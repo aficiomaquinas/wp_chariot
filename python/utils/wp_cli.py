@@ -9,7 +9,7 @@ import shlex
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union, Literal
 
-from wp_deploy.config_yaml import get_yaml_config, get_nested
+from config_yaml import get_yaml_config, get_nested
 
 def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False, 
               remote_host: Optional[str] = None, remote_path: Optional[str] = None,

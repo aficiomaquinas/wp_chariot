@@ -1,0 +1,77 @@
+# Ejemplo de configuración de múltiples sitios
+# Este archivo gestiona múltiples sitios WordPress con una única instalación
+# de las herramientas deploy-tools.
+#
+# Copia este archivo a sites.yaml y personaliza según tus necesidades.
+
+# Sitio predeterminado (opcional) - Se usa cuando no se especifica --site
+default: "misitio1"
+
+# Configuración de sitios individuales
+sites:
+  # Primer sitio
+  misitio1:
+    ssh:
+      remote_host: "servidor1"  # Alias SSH en ~/.ssh/config
+      remote_path: "/home/user/webapps/sitio1/"
+      local_path: "/home/usuario/Proyectos/sitio1/app/public/"
+
+    security:
+      production_safety: "enabled"  # enabled o disabled
+
+    urls:
+      remote: "https://sitio1.com"
+      local: "https://sitio1.ddev.site"
+
+    database:
+      remote:
+        name: "sitio1_db"
+        user: "sitio1_user"
+        password: "contraseña-segura"
+        host: "localhost"
+
+    media:
+      url: "https://sitio1.com/wp-content/uploads/"
+      expert_mode: false
+      path: "../media"
+
+    ddev:
+      webroot: "/var/www/html/app/public"
+
+    # Puedes sobrescribir exclusiones específicas para este sitio
+    exclusions:
+      custom-plugin: "wp-content/plugins/plugin-especifico-sitio1/"
+      # También puedes desactivar alguna exclusión global
+      akismet: false  # Esto sincronizará Akismet en este sitio
+
+  # Segundo sitio
+  misitio2:
+    ssh:
+      remote_host: "servidor2"
+      remote_path: "/var/www/sitio2/"
+      local_path: "/home/usuario/Proyectos/sitio2/public_html/"
+
+    urls:
+      remote: "https://sitio2.com"
+      local: "https://sitio2.ddev.site"
+
+    database:
+      remote:
+        name: "sitio2_db"
+        user: "sitio2_user"
+        password: "otra-contraseña-segura"
+        host: "localhost"
+
+    media:
+      url: "https://sitio2.com/wp-content/uploads/"
+      # Puedes personalizar cada sitio según sus necesidades específicas
+      expert_mode: true
+      path: "/ruta/absoluta/a/uploads"
+
+    ddev:
+      webroot: "/var/www/html"
+
+    # Exclusiones específicas para este sitio
+    exclusions:
+      # Aquí puedes tener diferentes exclusiones para cada sitio
+      mi-tema: "wp-content/themes/mi-tema-personalizado/" 

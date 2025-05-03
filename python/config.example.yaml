@@ -1,81 +1,83 @@
 # Configuración global para WordPress Deploy Tools
 # Este es un archivo de ejemplo. Copia a config.yaml y personaliza.
+# 
+# NOTA IMPORTANTE: Este archivo contiene solo configuración global que
+# se aplica a todos los sitios. Para configurar sitios específicos,
+# utilice el archivo sites.yaml.
+#
+# Flujo de trabajo con múltiples sitios:
+# 1. Configuración global aquí en config.yaml
+# 2. Sitios específicos en sites.yaml
+# 3. Para usar: python cli.py [comando] --site [alias-sitio]
 
-ssh:
-  remote_host: "example-host"  # Alias SSH en ~/.ssh/config
-  remote_path: "/path/to/remote/wordpress/"
-  local_path: "/path/to/local/wordpress/"
+# Ajustes WP-CLI globales
+wp_cli:
+  memory_limit: "512M"  # Límite de memoria para PHP en WP-CLI
 
+# Parámetros de seguridad por defecto
 security:
-  production_safety: "enabled"  # enabled o disabled
+  production_safety: "enabled"  # Protección contra sobrescritura en producción
+  backups: "enabled"  # Crear backups automáticos antes de operaciones peligrosas
 
-urls:
-  remote: "https://www.example.com"
-  local: "https://local.example.test"
-
-database:
-  remote:
-    name: "db_name"
-    user: "db_user"
-    password: "db_password"
-    host: "localhost"
-
-media:
-  url: "https://www.example.com/wp-content/uploads/"
-  expert_mode: false
-  path: "../media"
-
-# Configuración de DDEV
-ddev:
-  # Ruta de webroot dentro del contenedor DDEV
-  webroot: "/var/www/html/app/public"
-
-# Exclusiones para rsync (plugins y archivos que no se sincronizan)
+# Exclusiones por defecto (se pueden sobrescribir por sitio)
 exclusions:
   # Directorios de caché y optimización
   cache: "wp-content/cache/"
   litespeed: "wp-content/litespeed/"
   jetpack-waf: "wp-content/jetpack-waf/"
   wflogs: "wp-content/wflogs/"
-  rabbitloader: "wp-content/rabbitloader/"
   
   # Archivos de caché y configuración
   object-cache: "wp-content/object-cache.php"
-  litespeed_conf: "wp-content/.litespeed_conf.dat"
-  patchstack-mu: "wp-content/mu-plugins/_patchstack.php"
   
   # Plugins de caché y optimización
   akismet: "wp-content/plugins/akismet/"
-  patchstack: "wp-content/plugins/patchstack/"
-  autoptimize: "wp-content/plugins/autoptimize/"
-  bj-lazy-load: "wp-content/plugins/bj-lazy-load/"
-  cdn-enabler: "wp-content/plugins/cdn-enabler/"
-  critical-css: "wp-content/plugins/critical-css-for-wp/"
-  elasticpress: "wp-content/plugins/elasticpress/"
-  jetpack: "wp-content/plugins/jetpack/"
-  jetpack-search: "wp-content/plugins/jetpack-search/"
-  lazy-load-comments: "wp-content/plugins/lazy-load-for-comments/"
-  malcare-security: "wp-content/plugins/malcare-security/"
-  migrate-guru: "wp-content/plugins/migrate-guru/"
-  object-cache-pro: "wp-content/plugins/object-cache-pro/"
-  rabbitloader-plugin: "wp-content/plugins/rabbit-loader/"
-  cloudflare-turnstile: "wp-content/plugins/simple-cloudflare-turnstile/"
-  wp-ses: "wp-content/plugins/wp-ses/"
-  litespeed-cache: "wp-content/plugins/litespeed-cache/"
   wordfence: "wp-content/plugins/wordfence/"
-  wp-maintenance-mode: "wp-content/plugins/wp-maintenance-mode/"
+  litespeed-cache: "wp-content/plugins/litespeed-cache/"
   
-  # Media
+  # Media (por defecto no sincronizar uploads)
   default-themes: "wp-content/themes/twenty*"
   uploads-by-year: "wp-content/uploads/[0-9][0-9][0-9][0-9]/"
 
   # Debug y desarrollo
   debug-logs: "wp-content/debug.log*"
-  my-plugin: "wp-content/plugins/my-plugin/"
 
-# Archivos protegidos
+# Archivos protegidos por defecto
 protected_files:
   - "wp-config.php"
   - "wp-config-ddev.php"
   - ".gitignore"
-  - ".ddev/" 
+  - ".ddev/"
+
+# -------------------------------------------------------------------------
+# EJEMPLO DE CONFIGURACIÓN DE SITIO (para sites.yaml)
+# Este es un ejemplo de cómo debería verse su sites.yaml
+# -------------------------------------------------------------------------
+#
+# default: "ejemplo-sitio"  # Sitio predeterminado (opcional)
+#
+# sites:
+#   ejemplo-sitio:
+#     ssh:
+#       remote_host: "example-host"  # Alias SSH en ~/.ssh/config
+#       remote_path: "/path/to/remote/wordpress/"
+#       local_path: "/path/to/local/wordpress/"
+#
+#     urls:
+#       remote: "https://www.example.com"
+#       local: "https://local.example.test"
+#
+#     database:
+#       remote:
+#         name: "db_name"
+#         user: "db_user"
+#         password: "db_password"
+#         host: "localhost"
+#
+#     media:
+#       url: "https://www.example.com/wp-content/uploads/"
+#       expert_mode: false
+#       path: "../media"
+#
+#     ddev:
+#       webroot: "/var/www/html/app/public" 

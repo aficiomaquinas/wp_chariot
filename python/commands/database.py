@@ -14,9 +14,9 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
 
-from wp_deploy.config_yaml import get_yaml_config
-from wp_deploy.utils.ssh import SSHClient
-from wp_deploy.utils.filesystem import ensure_dir_exists, create_backup
+from config_yaml import get_yaml_config
+from utils.ssh import SSHClient
+from utils.filesystem import ensure_dir_exists, create_backup
 
 class DatabaseSynchronizer:
     """

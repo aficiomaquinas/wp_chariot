@@ -10,7 +10,7 @@ import argparse
 import sys
 from typing import List, Optional
 
-from wp_deploy.commands.patch import (
+from commands.patch import (
     add_patch, remove_patch, apply_patch, list_patches, rollback_patch
 )
 

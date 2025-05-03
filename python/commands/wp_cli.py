@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from wp_deploy.config_yaml import get_yaml_config, get_nested
-from wp_deploy.utils.wp_cli import flush_cache, update_option, update_media_path
+from config_yaml import get_yaml_config, get_nested
+from utils.wp_cli import flush_cache, update_option, update_media_path
 
 def flush_wp_cache(args: Optional[List[str]] = None) -> int:
     """

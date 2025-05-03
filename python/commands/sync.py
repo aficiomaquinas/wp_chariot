@@ -12,9 +12,9 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union, Set
 
-from wp_deploy.config_yaml import get_yaml_config
-from wp_deploy.utils.ssh import SSHClient, run_rsync
-from wp_deploy.utils.filesystem import ensure_dir_exists, create_backup, get_default_exclusions
+from config_yaml import get_yaml_config
+from utils.ssh import SSHClient, run_rsync
+from utils.filesystem import ensure_dir_exists, create_backup, get_default_exclusions
 
 class FileSynchronizer:
     """
@@ -293,7 +293,7 @@ class FileSynchronizer:
         
         # Obtener la lista de archivos parcheados
         try:
-            from wp_deploy.commands.patch import get_patched_files, PatchManager
+            from commands.patch import get_patched_files, PatchManager
             
             # Primero mostramos un mensaje para confirmar que esta parte se ejecuta
             print("\n🔧 ANÁLISIS DE PARCHES")

@@ -8,12 +8,12 @@ entre un servidor remoto y el entorno local.
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
 
-from wp_deploy.config_yaml import get_yaml_config
-from wp_deploy.utils.ssh import SSHClient, run_rsync
-from wp_deploy.utils.filesystem import get_default_exclusions
+from config_yaml import get_yaml_config
+from utils.ssh import SSHClient, run_rsync
+from utils.filesystem import get_default_exclusions
 
 # Importar la clase FileSynchronizer después para evitar importación circular
-import wp_deploy.commands.sync as sync_module
+import commands.sync as sync_module
 
 class DiffCommand:
     """
