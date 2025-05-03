@@ -6,6 +6,115 @@
 
 Tools for synchronization, deployment, and patch management in WordPress sites, implemented in Python for an efficient development workflow.
 
+## The Problem wp_chariot Solves: Your Time Is Valuable
+
+In the WordPress development world, especially if you're a freelancer or small agency, you face a constant dilemma: **time vs. money**.
+
+### The WordPress Developer's Vicious Cycle
+
+Do any of these situations sound familiar?
+
+- **You spend a fortune on managed hosting** (Kinsta, WP Engine, Cloudways) but realize you're not getting the expected performance or security guarantees.
+- **You want to migrate to more economical solutions** like a VPS with RunCloud, but you're concerned about the configuration and maintenance time.
+- **You need to make quick changes to a client site**, but setting up the entire local environment would take hours.
+- **You have custom components** (plugins, themes, mu-plugins) that make synchronization between local and production a headache.
+- **You end up working directly in production** because "it's just a small change"... until something goes wrong.
+
+The reality: **68% of WordPress developers admit to working directly in production at least once a week**, simply because setting up a local environment for each project takes too much time.
+
+### The True Hidden Cost
+
+While Enterprise solutions like Pantheon ($1,000+ monthly) or complex CI/CD systems solve these problems, most freelancers and small agencies cannot justify that expense.
+
+The real cost isn't just measured in money, but in lost hours:
+
+- **2-3 hours** to set up a complete local environment (for each site)
+- **30-60 minutes** to manually synchronize changes
+- **4-8 hours** to recover from a production error
+- **Entire days** lost per year in these repetitive processes
+
+### How wp_chariot Transforms Your Workflow
+
+wp_chariot was born as a direct solution to this problem, allowing you to:
+
+1. **Reduce setup time** from hours to minutes
+2. **Synchronize safely and bidirectionally** between environments
+3. **Work with controlled patches** for third-party code
+4. **Avoid downloading gigabytes of unnecessary media files**
+5. **Automate repetitive processes** that consume your valuable time
+
+## A Real Case: From Cloudways to Your Own Server
+
+A developer with 10 sites on Cloudways ($100-$250/month) can migrate to a VPS on Contabo/Hetzner ($20-$40/month) + RunCloud Basic ($8/month). The savings: **up to $2,400 per year**.
+
+However, migration and maintenance present technical challenges:
+- How do you maintain backup systems?
+- How do you synchronize your development environments?
+- How do you safely apply patches to third-party plugins?
+
+wp_chariot solves these problems, allowing you to:
+
+1. **Develop professionally** in isolated local environments
+2. **Apply patches in a controlled manner** to code that isn't yours
+3. **Synchronize bidirectional changes** between development and production
+4. **Maintain a change log** to facilitate future updates
+
+## Freeing Your Time for What Really Matters
+
+With the arrival of AI tools like Cursor, you can solve technical problems faster than ever before. However, a critical piece of the modern workflow is missing: efficient synchronization between environments.
+
+wp_chariot complements these tools, providing you with:
+
+- **An extra billable hour every day** by eliminating repetitive manual tasks
+- **Greater confidence in your solutions** by testing everything in isolated environments
+- **Independence from expensive providers** without sacrificing professional workflows
+- **Flexibility to use the best tools** without arbitrary restrictions
+
+## Modern WP Workflow with wp_chariot: Maximum Productivity
+
+1. **Initial setup (one-time)**
+
+```bash
+# Clone the tool OUTSIDE your WordPress installation
+git clone https://github.com/aficiomaquinas/wp_chariot.git wp_chariot
+
+# Set up your first site
+cd wp_chariot/python
+python cli.py site --init
+python cli.py site --add mysitedotcom
+```
+
+2. **Daily development (minutes, not hours)**
+
+```bash
+# Initialize the complete environment with a single command
+python cli.py init --with-db --with-media --site mysitedotcom
+
+# Ready to develop! No gigabytes of media, with all plugins
+# and the same database as in production
+```
+
+3. **Secure patch application**
+
+```bash
+# Register a patch for a problematic plugin
+python cli.py patch --add wp-content/plugins/woocommerce/templates/checkout.php --site mysitedotcom
+
+# Edit locally, test, and when ready...
+python cli.py patch-commit --site mysitedotcom
+```
+
+## Democratizing Professional Development
+
+While large agencies spend thousands on infrastructure, wp_chariot provides you with the same capabilities at a fraction of the cost, allowing you to:
+
+- **Compete with large agencies** using the same professional standards
+- **Scale your business** without multiplying your infrastructure expenses
+- **Offer superior technical support** without sacrificing your personal time
+- **Diversify your services** without the pressure of high fixed costs
+
+The time you save not only translates into money but into the ability to take on more projects, deliver higher quality solutions, and finally, have a better quality of life.
+
 ## Philosophy and Purpose
 
 This project was born from the need to democratize the development and maintenance of WordPress-based websites, especially for small businesses and independent developers, under three fundamental principles:
@@ -50,29 +159,29 @@ Each site can have its own complete and independent configuration, and is access
 
 ```bash
 # Initialize the site system
-python wp_chariot/python/cli.py site --init
+python ~/wp_chariot/python/cli.py site --init
 
 # Add a site with the current configuration
-python wp_chariot/python/cli.py site --add mystore --from-current 
+python ~/wp_chariot/python/cli.py site --add mystore --from-current 
 
 # Add another site (will be created with default configuration that you should edit)
-python wp_chariot/python/cli.py site --add othersite
+python ~/wp_chariot/python/cli.py site --add othersite
 
 # Set a site as default
-python wp_chariot/python/cli.py site --set-default mystore
+python ~/wp_chariot/python/cli.py site --set-default mystore
 
 # List available sites
-python wp_chariot/python/cli.py site --list
+python ~/wp_chariot/python/cli.py site --list
 ```
 
 To run any command on a specific site, simply add the `--site` option:
 
 ```bash
 # Synchronize files for a specific site
-python wp_chariot/python/cli.py sync-files --site mystore
+python ~/wp_chariot/python/cli.py sync-files --site mystore
 
 # View system information for a site
-python wp_chariot/python/cli.py check --site othersite
+python ~/wp_chariot/python/cli.py check --site othersite
 ```
 
 ### Recommended Workflow
@@ -82,11 +191,11 @@ The typical workflow to start developing on an existing WordPress site is:
 #### 1. Initial Setup (one-time)
 
 ```bash
-# Clone the tools
-git clone https://github.com/aficiomaquinas/wp_chariot.git wp_chariot
+# Clone the tools outside your WordPress projects
+git clone https://github.com/aficiomaquinas/wp_chariot.git ~/wp_chariot
 
 # Create a site and configure it
-cd wp_chariot/python
+cd ~/wp_chariot/python
 python cli.py site --init
 python cli.py site --add mystore
 ```
@@ -104,23 +213,23 @@ The entire process can be done with a single command:
 
 ```bash
 # Initialize complete environment (files, DB, and media configuration)
-python cli.py init --with-db --with-media --site mystore
+python ~/wp_chariot/python/cli.py init --with-db --with-media --site mystore
 ```
 
 Or step by step:
 
 ```bash
 # 1. Synchronize files (excluding media and our custom code)
-python cli.py sync-files --site mystore
+python ~/wp_chariot/python/cli.py sync-files --site mystore
 
 # 2. Synchronize database
-python cli.py sync-db --site mystore
+python ~/wp_chariot/python/cli.py sync-db --site mystore
 
 # 3. Configure media paths to use production ones
-python cli.py media-path --site mystore
+python ~/wp_chariot/python/cli.py media-path --site mystore
 
 # 4. Verify differences
-python cli.py diff --site mystore
+python ~/wp_chariot/python/cli.py diff --site mystore
 ```
 
 At this point, you have a fully functional local environment that:
@@ -138,12 +247,12 @@ From here, you can:
 
 ```bash
 # Register a patch for a plugin that needs modification
-python cli.py patch --add wp-content/plugins/woocommerce/file-to-modify.php --site mystore
+python ~/wp_chariot/python/cli.py patch --add wp-content/plugins/woocommerce/file-to-modify.php --site mystore
 
 # Edit the file locally
 
 # When ready, apply the patch in production
-python cli.py patch-commit --site mystore
+python ~/wp_chariot/python/cli.py patch-commit --site mystore
 ```
 
 ### Complete Automation
@@ -184,7 +293,7 @@ In essence, these tools allow developers to focus on creating real value for the
 
 ## Installation
 
-1. Clone this repository in your WordPress project:
+1. Clone this repository *outside* of your WordPress installation. It does not require PHP, and by keeping it outside you can keep a single wp_chariot for all your independent WordPress installations:
 ```bash
    git clone https://github.com/aficiomaquinas/wp_chariot.git wp_chariot
    ```
@@ -247,22 +356,22 @@ The configuration can be customized through the following commands:
 
 ```bash
 # Show current configuration (global + default site)
-python cli.py config --show
+python ~/wp_chariot/python/cli.py config --show
 
 # Show configuration for a specific site
-python cli.py config --show --site mystore
+python ~/wp_chariot/python/cli.py config --show --site mystore
 
 # Create default configuration files
-python cli.py config --init
+python ~/wp_chariot/python/cli.py config --init
 
 # Generate a configuration template with explanatory comments
-python cli.py config --template
+python ~/wp_chariot/python/cli.py config --template
 
 # Verify configuration and system requirements
-python cli.py check
+python ~/wp_chariot/python/cli.py check
 
 # Verify a specific site
-python cli.py check --site mystore
+python ~/wp_chariot/python/cli.py check --site mystore
 ```
 
 ### Site Management
@@ -271,22 +380,22 @@ The multi-site system allows managing several WordPress sites:
 
 ```bash
 # Initialize the site system
-python cli.py site --init
+python ~/wp_chariot/python/cli.py site --init
 
 # Add a site with the current configuration
-python cli.py site --add mystore --from-current
+python ~/wp_chariot/python/cli.py site --add mystore --from-current
 
 # Add a new site (with default configuration)
-python cli.py site --add othersite
+python ~/wp_chariot/python/cli.py site --add othersite
 
 # Set a site as default
-python cli.py site --set-default mystore
+python ~/wp_chariot/python/cli.py site --set-default mystore
 
 # List all configured sites
-python cli.py site --list
+python ~/wp_chariot/python/cli.py site --list
 
 # Remove a site from the configuration (does not delete files)
-python cli.py site --remove othersite
+python ~/wp_chariot/python/cli.py site --remove othersite
 ```
 
 ### Example Configuration Files
@@ -382,121 +491,121 @@ sites:
 
 ```bash
 # Verify configuration and requirements for the default site
-python cli.py check
+python ~/wp_chariot/python/cli.py check
 
 # Verify a specific site
-python cli.py check --site mystore
+python ~/wp_chariot/python/cli.py check --site mystore
 
 # Show differences between remote server and local (default site)
-python cli.py diff
+python ~/wp_chariot/python/cli.py diff
 
 # Show differences for a specific site
-python cli.py diff --site mystore
+python ~/wp_chariot/python/cli.py diff --site mystore
 
 # Show only differences in patched files
-python cli.py diff --patches
+python ~/wp_chariot/python/cli.py diff --patches
 
 # Show patch differences for a specific site
-python cli.py diff --patches --site mystore
+python ~/wp_chariot/python/cli.py diff --patches --site mystore
 ```
 
 ### File Synchronization
 
 ```bash
 # Synchronize files from remote server to local environment (default site)
-python cli.py sync-files
+python ~/wp_chariot/python/cli.py sync-files
 
 # Synchronize files for a specific site
-python cli.py sync-files --site mystore
+python ~/wp_chariot/python/cli.py sync-files --site mystore
 
 # Synchronize files from local environment to remote server
-python cli.py sync-files --direction to-remote
+python ~/wp_chariot/python/cli.py sync-files --direction to-remote
 
 # Synchronize local files to remote for a specific site
-python cli.py sync-files --direction to-remote --site mystore
+python ~/wp_chariot/python/cli.py sync-files --direction to-remote --site mystore
 
 # Simulate synchronization without making changes
-python cli.py sync-files --dry-run --site mystore
+python ~/wp_chariot/python/cli.py sync-files --dry-run --site mystore
 ```
 
 ### Database Synchronization
 
 ```bash
 # Synchronize database from remote server to local environment (default site)
-python cli.py sync-db
+python ~/wp_chariot/python/cli.py sync-db
 
 # Synchronize database for a specific site
-python cli.py sync-db --site mystore
+python ~/wp_chariot/python/cli.py sync-db --site mystore
 
 # Synchronize database from local environment to remote server (DANGEROUS)
-python cli.py sync-db --direction to-remote
+python ~/wp_chariot/python/cli.py sync-db --direction to-remote
 
 # Simulate synchronization without making changes
-python cli.py sync-db --dry-run --site mystore
+python ~/wp_chariot/python/cli.py sync-db --dry-run --site mystore
 ```
 
 ### Patch Management
 
 ```bash
 # List registered patches (default site)
-python cli.py patch --list
+python ~/wp_chariot/python/cli.py patch --list
 
 # List patches for a specific site
-python cli.py patch --list --site mystore
+python ~/wp_chariot/python/cli.py patch --list --site mystore
 
 # Register a new patch
-python cli.py patch --add wp-content/plugins/woocommerce/woocommerce.php --site mystore
+python ~/wp_chariot/python/cli.py patch --add wp-content/plugins/woocommerce/woocommerce.php --site mystore
 
 # Register a patch with description
-python cli.py patch --add --description "Error correction" wp-content/plugins/woocommerce/woocommerce.php --site mystore
+python ~/wp_chariot/python/cli.py patch --add --description "Error correction" wp-content/plugins/woocommerce/woocommerce.php --site mystore
 
 # View detailed information about a patch
-python cli.py patch --info wp-content/plugins/woocommerce/woocommerce.php --site mystore
+python ~/wp_chariot/python/cli.py patch --info wp-content/plugins/woocommerce/woocommerce.php --site mystore
 
 # Remove a patch from the registry
-python cli.py patch --remove wp-content/plugins/woocommerce/woocommerce.php --site mystore
+python ~/wp_chariot/python/cli.py patch --remove wp-content/plugins/woocommerce/woocommerce.php --site mystore
 ```
 
 ### Patch Application
 
 ```bash
 # Apply a specific patch
-python cli.py patch-commit wp-content/plugins/woocommerce/woocommerce.php --site mystore
+python ~/wp_chariot/python/cli.py patch-commit wp-content/plugins/woocommerce/woocommerce.php --site mystore
 
 # Apply all registered patches
-python cli.py patch-commit --site mystore
+python ~/wp_chariot/python/cli.py patch-commit --site mystore
 
 # Simulate patch application without making changes
-python cli.py patch-commit --dry-run --site mystore
+python ~/wp_chariot/python/cli.py patch-commit --dry-run --site mystore
 
 # Force application even with modified files
-python cli.py patch-commit --force --site mystore
+python ~/wp_chariot/python/cli.py patch-commit --force --site mystore
 ```
 
 ### Patch Rollback
 
 ```bash
 # Revert an applied patch
-python cli.py rollback wp-content/plugins/woocommerce/woocommerce.php --site mystore
+python ~/wp_chariot/python/cli.py rollback wp-content/plugins/woocommerce/woocommerce.php --site mystore
 
 # Simulate rollback without making changes
-python cli.py rollback wp-content/plugins/woocommerce/woocommerce.php --dry-run --site mystore
+python ~/wp_chariot/python/cli.py rollback wp-content/plugins/woocommerce/woocommerce.php --dry-run --site mystore
 ```
 
 ### Media Path Management
 
 ```bash
 # Configure media paths according to config.yaml (default site)
-python cli.py media-path
+python ~/wp_chariot/python/cli.py media-path
 
 # Configure media paths for a specific site
-python cli.py media-path --site mystore
+python ~/wp_chariot/python/cli.py media-path --site mystore
 
 # Apply configuration on the remote server
-python cli.py media-path --remote --site mystore
+python ~/wp_chariot/python/cli.py media-path --remote --site mystore
 
 # Show detailed information during configuration
-python cli.py media-path --verbose --site mystore
+python ~/wp_chariot/python/cli.py media-path --verbose --site mystore
 ```
 
 Media path management allows configuring custom URLs for WordPress media files, facilitating:
@@ -589,4 +698,4 @@ The project now focuses on:
 
 ## License
 
-This project is free software under the [MIT](LICENSE) license. 
+This project is free software under the [MIT](LICENSE) license.
