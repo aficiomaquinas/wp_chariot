@@ -50,29 +50,29 @@ Each site can have its own complete and independent configuration, and is access
 
 ```bash
 # Initialize the site system
-python deploy-tools/python/cli.py site --init
+python wp_chariot/python/cli.py site --init
 
 # Add a site with the current configuration
-python deploy-tools/python/cli.py site --add mystore --from-current 
+python wp_chariot/python/cli.py site --add mystore --from-current 
 
 # Add another site (will be created with default configuration that you should edit)
-python deploy-tools/python/cli.py site --add othersite
+python wp_chariot/python/cli.py site --add othersite
 
 # Set a site as default
-python deploy-tools/python/cli.py site --set-default mystore
+python wp_chariot/python/cli.py site --set-default mystore
 
 # List available sites
-python deploy-tools/python/cli.py site --list
+python wp_chariot/python/cli.py site --list
 ```
 
 To run any command on a specific site, simply add the `--site` option:
 
 ```bash
 # Synchronize files for a specific site
-python deploy-tools/python/cli.py sync-files --site mystore
+python wp_chariot/python/cli.py sync-files --site mystore
 
 # View system information for a site
-python deploy-tools/python/cli.py check --site othersite
+python wp_chariot/python/cli.py check --site othersite
 ```
 
 ### Recommended Workflow
@@ -83,10 +83,10 @@ The typical workflow to start developing on an existing WordPress site is:
 
 ```bash
 # Clone the tools
-git clone https://github.com/aficiomaquinas/wp-deploy-tools.git deploy-tools
+git clone https://github.com/aficiomaquinas/wp_chariot.git wp_chariot
 
 # Create a site and configure it
-cd deploy-tools/python
+cd wp_chariot/python
 python cli.py site --init
 python cli.py site --add mystore
 ```
@@ -186,12 +186,12 @@ In essence, these tools allow developers to focus on creating real value for the
 
 1. Clone this repository in your WordPress project:
 ```bash
-   git clone https://github.com/aficiomaquinas/wp-deploy-tools.git deploy-tools
+   git clone https://github.com/aficiomaquinas/wp_chariot.git wp_chariot
    ```
 
 2. Install dependencies:
    ```bash
-   cd deploy-tools/python
+   cd wp_chariot/python
    pip install -r requirements.txt
    ```
 
@@ -203,29 +203,38 @@ In essence, these tools allow developers to focus on creating real value for the
 ## Project Structure
 
 ```
-deploy-tools/python/
-├── wp_deploy/                    # Main package
-│   ├── __init__.py
-│   ├── config_yaml.py            # YAML configuration management
-│   ├── commands/                 # Available commands
-│   │   ├── __init__.py
-│   │   ├── diff.py               # Show differences
-│   │   ├── sync.py               # File synchronization
-│   │   ├── database.py           # Database synchronization
-│   │   ├── patch.py              # Patch application
-│   │   ├── site.py               # Multiple site management
-│   │   └── media.py              # Media path management
-│   ├── utils/                    # Shared utilities
-│   │   ├── __init__.py
-│   │   ├── ssh.py                # SSH operations
-│   │   ├── wp_cli.py             # WP-CLI operations
-│   │   └── filesystem.py         # Filesystem operations
-├── cli.py                        # CLI entry point
-├── config.yaml                   # Global configuration for all sites
-├── sites.yaml                    # Specific configuration for each site
-├── patches.lock.json             # Applied patches registry
-├── setup.py                      # Installation configuration
-└── requirements.txt              # Dependencies
+wp_chariot/
+├── logo.png                      # Project logo
+├── README.md                     # Project documentation
+└── python/                       # Main code directory
+    ├── __init__.py               # Package initialization
+    ├── cli.py                    # CLI entry point
+    ├── config_yaml.py            # YAML configuration management
+    ├── config.py                 # Configuration system
+    ├── commands/                 # Available commands
+    │   ├── __init__.py
+    │   ├── diff.py               # Show differences
+    │   ├── sync.py               # File synchronization
+    │   ├── database.py           # Database synchronization
+    │   ├── patch.py              # Patch application
+    │   ├── patch_cli.py          # Patch CLI utilities
+    │   ├── wp_cli.py             # WP CLI command utilities
+    │   └── media.py              # Media path management
+    ├── sync/                     # Synchronization modules
+    │   ├── __init__.py
+    │   └── files.py              # File synchronization 
+    ├── utils/                    # Shared utilities
+    │   ├── __init__.py
+    │   ├── ssh.py                # SSH operations
+    │   ├── wp_cli.py             # WP-CLI operations
+    │   └── filesystem.py         # Filesystem operations
+    ├── config.yaml               # Global configuration for all sites
+    ├── sites.yaml                # Specific configuration for each site
+    ├── config.example.yaml       # Example global configuration
+    ├── sites.example.yaml        # Example site configuration
+    ├── patches-*.lock.json       # Applied patches registry (per site)
+    ├── setup.py                  # Installation configuration
+    └── requirements.txt          # Dependencies
 ```
 
 ## Configuration
@@ -285,7 +294,7 @@ python cli.py site --remove othersite
 #### Global Configuration (config.yaml)
 
 ```yaml
-# Global configuration for WordPress Deploy Tools
+# Global configuration for wp_chariot
 # This file contains common configuration for all sites
 
 # Global WP-CLI settings
@@ -317,7 +326,7 @@ protected_files:
 #### Site Configuration (sites.yaml)
 
 ```yaml
-# Multiple site configuration for WordPress Deploy Tools
+# Multiple site configuration for wp_chariot
 
 # Default site (if multiple are configured)
 default: "mystore"
