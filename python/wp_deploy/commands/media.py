@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
 """
-Script para configurar la ruta de uploads en WordPress
+Módulo para la configuración de rutas de medios en WordPress
 
-Este script instala y configura el plugin 'WP Original Media Path' y establece
-la ruta de subidas de WordPress para trabajar con medios externos.
+Este módulo proporciona funciones para configurar la ruta de uploads en WordPress
+mediante el plugin 'WP Original Media Path'.
 """
 
 import os
 import sys
-import argparse
+import subprocess
 import time
 from pathlib import Path
-import subprocess
-
-# Añadir directorio padre al path para poder importar wp_deploy
-script_dir = Path(__file__).resolve().parent
-project_dir = script_dir.parent
-sys.path.insert(0, str(project_dir))
+from typing import Optional, Tuple, Dict
 
 from wp_deploy.utils.wp_cli import (
     run_wp_cli,
@@ -33,41 +28,29 @@ from wp_deploy.config_yaml import get_yaml_config, get_nested
 MEDIA_PLUGIN = "wp-original-media-path"
 MEDIA_PLUGIN_URL = "https://downloads.wordpress.org/plugin/wp-original-media-path.latest-stable.zip"
 
-def main():
+# Límite de memoria para WP-CLI
+WP_CLI_MEMORY_LIMIT = "256M"
+
+def configure_media_path(
+    media_url: Optional[str] = None,
+    expert_mode: bool = False,
+    media_path: Optional[str] = None,
+    remote: bool = False,
+    verbose: bool = False
+) -> bool:
     """
-    Función principal del script
+    Configura la ruta de medios en WordPress
+    
+    Args:
+        media_url: IGNORADO - Se usa el valor de config.yaml
+        expert_mode: Indica si se debe activar el modo experto (desde config.yaml)
+        media_path: IGNORADO - Se usa el valor de config.yaml
+        remote: Aplicar en el servidor remoto en lugar de localmente
+        verbose: Mostrar información detallada
+        
+    Returns:
+        bool: True si la configuración se completó correctamente, False en caso contrario
     """
-    parser = argparse.ArgumentParser(
-        description="Instala y configura wp-original-media-path para URLs personalizadas de medios"
-    )
-    
-    parser.add_argument(
-        "--url", 
-        help="URL del directorio de uploads (ej: https://media.tudominio.com)"
-    )
-    
-    parser.add_argument(
-        "--expert", action="store_true",
-        help="Activar modo experto para configurar ruta física personalizada"
-    )
-    
-    parser.add_argument(
-        "--path", 
-        help="Ruta física para uploads (solo con --expert)"
-    )
-    
-    parser.add_argument(
-        "--remote", action="store_true",
-        help="Aplicar en el servidor remoto en lugar de localmente"
-    )
-    
-    parser.add_argument(
-        "-v", "--verbose", action="store_true",
-        help="Mostrar información detallada"
-    )
-    
-    args = parser.parse_args()
-    
     # Cargar configuración
     config = get_yaml_config()
     local_path = Path(get_nested(config, "ssh", "local_path"))
@@ -76,32 +59,32 @@ def main():
     
     # Obtener ruta dentro del contenedor DDEV (valor obligatorio desde config.yaml)
     ddev_wp_path = get_nested(config, "ddev", "webroot")
-    if not ddev_wp_path and not args.remote:
+    if not ddev_wp_path and not remote:
         print("⚠️ Error: No se ha configurado ddev.webroot en config.yaml")
         print("   Esta configuración es obligatoria para usar DDEV.")
         print("   Ejemplo: webroot: \"/var/www/html/app/public\"")
-        return 1
+        return False
     
-    # Obtener URL de medios desde configuración si no se especificó
-    media_url = args.url
+    # SIEMPRE obtener los valores desde la configuración
+    media_url = get_nested(config, "media", "url", "")
     if not media_url:
-        media_url = get_nested(config, "media", "url", "")
-        if not media_url:
-            print("⚠️ No se especificó URL de medios y no se encontró en configuración")
-            print("   Ejemplo: --url=https://media.tudominio.com")
-            print("   Sin URL de medios, se usará la URL predeterminada de WordPress")
+        print("⚠️ No se encontró URL de medios en la configuración")
+        print("   Configure 'media.url' en config.yaml")
+        print("   Ejemplo: url: \"https://media.tudominio.com\"")
+        print("   Sin URL de medios, se usará la URL predeterminada de WordPress")
     
-    # Ruta física personalizada para modo experto
-    media_path = args.path
-    if not media_path and args.expert:
+    # Usar el modo experto según la configuración
+    expert_mode = get_nested(config, "media", "expert_mode", False)
+    media_path = None
+    if expert_mode:
         media_path = get_nested(config, "media", "path", "")
-    
-    if not media_path and args.expert:
-        print("⚠️ Advertencia: Modo experto solicitado pero no se proporcionó ruta física")
-        print("   Ejemplo: --path=/ruta/absoluta/a/uploads")
+        if not media_path:
+            print("⚠️ Modo experto activado pero no se configuró ruta física")
+            print("   Configure 'media.path' en config.yaml")
+            print("   Ejemplo: path: \"/ruta/absoluta/a/uploads\"")
     
     # Si estamos en entorno local, verificar y asegurar que DDEV esté en ejecución
-    if not args.remote:
+    if not remote:
         try:
             print("🔍 Verificando estado de DDEV...")
             ddev_status = subprocess.run(
@@ -133,11 +116,11 @@ def main():
     
     # Verificación de WordPress antes de continuar
     print(f"🔍 Verificando instalación de WordPress...")
-    if args.verbose:
+    if verbose:
         print(f"   Ruta local: {local_path}")
         print(f"   Ruta en contenedor DDEV: {ddev_wp_path}")
     
-    if not is_wordpress_installed(local_path, args.remote, remote_host, remote_path, True, ddev_wp_path):
+    if not is_wordpress_installed(local_path, remote, remote_host, remote_path, True, ddev_wp_path):
         print("⚠️ No se pudo verificar una instalación funcional de WordPress")
         print("   Verifique que WordPress está correctamente instalado y configurado")
         print("   Continuando de todos modos, pero pueden ocurrir errores...")
@@ -145,13 +128,13 @@ def main():
     print(f"🔍 Configurando WordPress para usar rutas de medios personalizadas")
     if media_url:
         print(f"   URL de medios: {media_url}")
-    if args.expert and media_path:
+    if expert_mode and media_path:
         print(f"   Ruta física: {media_path} (Modo Experto)")
     
     # 1. Verificar si el plugin ya está instalado
     print(f"📋 Verificando plugin '{MEDIA_PLUGIN}'...")
     
-    if is_plugin_installed(MEDIA_PLUGIN, local_path, args.remote, remote_host, remote_path, True, ddev_wp_path):
+    if is_plugin_installed(MEDIA_PLUGIN, local_path, remote, remote_host, remote_path, True, ddev_wp_path):
         print(f"✅ Plugin '{MEDIA_PLUGIN}' ya está instalado")
         
         # Actualizar el plugin si ya está instalado
@@ -159,7 +142,7 @@ def main():
         update_result = install_plugin(
             MEDIA_PLUGIN, 
             local_path, 
-            args.remote, 
+            remote, 
             remote_host, 
             remote_path,
             True,
@@ -174,7 +157,7 @@ def main():
         print(f"📦 Instalando plugin '{MEDIA_PLUGIN}'...")
         
         # Mostrar comando que se ejecutaría para depuración
-        if not args.remote:
+        if not remote:
             debug_cmd = f"ddev wp plugin install {MEDIA_PLUGIN}"
         else:
             debug_cmd = f"ssh {remote_host} 'cd {remote_path} && wp plugin install {MEDIA_PLUGIN}'"
@@ -183,7 +166,7 @@ def main():
         install_result = install_plugin(
             MEDIA_PLUGIN, 
             local_path, 
-            args.remote, 
+            remote, 
             remote_host, 
             remote_path,
             True,
@@ -195,7 +178,7 @@ def main():
             print(f"🔄 Intentando instalar desde URL: {MEDIA_PLUGIN_URL}")
             
             # Mostrar comando que se ejecutaría para depuración
-            if not args.remote:
+            if not remote:
                 debug_cmd = f"ddev wp plugin install {MEDIA_PLUGIN_URL}"
             else:
                 debug_cmd = f"ssh {remote_host} 'cd {remote_path} && wp plugin install {MEDIA_PLUGIN_URL}'"
@@ -205,7 +188,7 @@ def main():
             install_result = install_plugin(
                 MEDIA_PLUGIN_URL, 
                 local_path, 
-                args.remote, 
+                remote, 
                 remote_host, 
                 remote_path,
                 True,
@@ -220,12 +203,13 @@ def main():
                 print("   2. Asegúrate de que DDEV está en ejecución (ddev start)")
                 print("   3. Comprueba la conectividad a Internet")
                 print("   4. Intenta instalar el plugin manualmente:")
-                if not args.remote:
+                if not remote:
                     print(f"      $ ddev wp plugin install {MEDIA_PLUGIN_URL}")
                 else:
                     print(f"      $ ssh {remote_host} 'cd {remote_path} && wp plugin install {MEDIA_PLUGIN_URL}'")
                 
                 print("⚠️ Continuando sin el plugin. La configuración de medios puede no funcionar correctamente.")
+                return False
             else:
                 print(f"✅ Plugin '{MEDIA_PLUGIN}' instalado correctamente")
         else:
@@ -233,36 +217,88 @@ def main():
     
     # 2. Activar el plugin
     print(f"🔌 Activando plugin '{MEDIA_PLUGIN}'...")
-    activate_result = activate_plugin(
-        MEDIA_PLUGIN, 
-        local_path, 
-        args.remote, 
-        remote_host, 
-        remote_path,
-        True,
-        ddev_wp_path
-    )
+    # Intentar activar hasta 3 veces con pequeñas pausas
+    activate_success = False
+    for attempt in range(3):
+        activate_result = activate_plugin(
+            MEDIA_PLUGIN, 
+            local_path, 
+            remote, 
+            remote_host, 
+            remote_path,
+            True,
+            ddev_wp_path,
+            memory_limit=WP_CLI_MEMORY_LIMIT  # Usar límite de memoria explícito
+        )
+        
+        if activate_result:
+            activate_success = True
+            print(f"✅ Plugin '{MEDIA_PLUGIN}' activado correctamente")
+            break
+        else:
+            if attempt < 2:  # No mostrar en último intento
+                print(f"⚠️ Intento {attempt+1}/3 fallido. Reintentando...")
+                time.sleep(2)  # Esperar un poco antes de reintentar
     
-    if not activate_result:
+    if not activate_success:
         print(f"⚠️ No se pudo activar el plugin '{MEDIA_PLUGIN}'. Continuando de todos modos...")
-    else:
-        print(f"✅ Plugin '{MEDIA_PLUGIN}' activado correctamente")
+        print(f"   Es posible que necesites activarlo manualmente desde el panel de WordPress.")
+        print(f"   O revisar los errores utilizando 'wp plugin activate {MEDIA_PLUGIN} --debug'")
     
     # 3. Obtener configuración actual
-    if args.verbose:
+    if verbose:
         print("🔍 Configuración actual:")
-        cmd = ["option", "get", "upload_url_path"]
-        code, stdout, stderr = run_wp_cli(cmd, local_path, args.remote, remote_host, remote_path, True, ddev_wp_path)
+        cmd = ["option", "get", "upload_url_path", "--skip-themes", "--skip-plugins"]
+        code, stdout, stderr = run_wp_cli(
+            cmd, 
+            local_path, 
+            remote, 
+            remote_host, 
+            remote_path, 
+            True, 
+            ddev_wp_path,
+            memory_limit=WP_CLI_MEMORY_LIMIT
+        )
         current_url = stdout.strip() if code == 0 and stdout.strip() else "No configurado"
         
-        cmd = ["option", "get", "owmp_path"]
-        code, stdout, stderr = run_wp_cli(cmd, local_path, args.remote, remote_host, remote_path, True, ddev_wp_path)
+        # Limpiar mensajes de error de memoria en la salida
+        if "Failed to set memory limit" in current_url:
+            current_url = current_url.split("\n")[-1].strip()
+        
+        cmd = ["option", "get", "owmp_path", "--skip-themes", "--skip-plugins"]
+        code, stdout, stderr = run_wp_cli(
+            cmd, 
+            local_path, 
+            remote, 
+            remote_host, 
+            remote_path, 
+            True, 
+            ddev_wp_path,
+            memory_limit=WP_CLI_MEMORY_LIMIT
+        )
         current_path = stdout.strip() if code == 0 and stdout.strip() else "No configurado"
         
-        cmd = ["option", "get", "owmp_expert_bool"]
-        code, stdout, stderr = run_wp_cli(cmd, local_path, args.remote, remote_host, remote_path, True, ddev_wp_path)
+        # Limpiar mensajes de error de memoria en la salida
+        if "Failed to set memory limit" in current_path:
+            current_path = current_path.split("\n")[-1].strip()
+        
+        cmd = ["option", "get", "owmp_expert_bool", "--skip-themes", "--skip-plugins"]
+        code, stdout, stderr = run_wp_cli(
+            cmd, 
+            local_path, 
+            remote, 
+            remote_host, 
+            remote_path, 
+            True, 
+            ddev_wp_path,
+            memory_limit=WP_CLI_MEMORY_LIMIT
+        )
         current_expert = stdout.strip() if code == 0 and stdout.strip() else "0"
         
+        # Limpiar mensajes de error de memoria en la salida
+        if "Failed to set memory limit" in current_expert:
+            current_expert = current_expert.split("\n")[-1].strip()
+            
         print(f"   URL actual: {current_url}")
         print(f"   Ruta física: {current_path}")
         print(f"   Modo experto: {'Activado' if current_expert == '1' else 'Desactivado'}")
@@ -274,25 +310,27 @@ def main():
             "upload_url_path", 
             media_url, 
             local_path, 
-            args.remote, 
+            remote, 
             remote_host, 
             remote_path,
             True,
-            ddev_wp_path
+            ddev_wp_path,
+            memory_limit=WP_CLI_MEMORY_LIMIT
         )
     
     # 5. Configurar modo experto si se solicitó
-    if args.expert:
+    if expert_mode:
         print("⚙️ Activando modo experto para ruta personalizada")
         update_option(
             "owmp_expert_bool", 
             "1", 
             local_path, 
-            args.remote, 
+            remote, 
             remote_host, 
             remote_path,
             True,
-            ddev_wp_path
+            ddev_wp_path,
+            memory_limit=WP_CLI_MEMORY_LIMIT
         )
         
         if media_path:
@@ -301,11 +339,12 @@ def main():
                 "owmp_path", 
                 media_path, 
                 local_path, 
-                args.remote, 
+                remote, 
                 remote_host, 
                 remote_path,
                 True,
-                ddev_wp_path
+                ddev_wp_path,
+                memory_limit=WP_CLI_MEMORY_LIMIT
             )
     else:
         # Asegurar que el modo experto esté desactivado
@@ -313,41 +352,82 @@ def main():
             "owmp_expert_bool", 
             "0", 
             local_path, 
-            args.remote, 
+            remote, 
             remote_host, 
             remote_path,
             True,
-            ddev_wp_path
+            ddev_wp_path,
+            memory_limit=WP_CLI_MEMORY_LIMIT
         )
     
     # 6. Limpiar caché
     print("🧹 Limpiando caché de WordPress...")
     flush_cache(
         local_path, 
-        args.remote, 
+        remote, 
         remote_host, 
         remote_path,
         True,
-        ddev_wp_path
+        ddev_wp_path,
+        memory_limit=WP_CLI_MEMORY_LIMIT
     )
     
     # 7. Verificar configuración final
     print("\n📊 Configuración final:")
     
     # URL de medios
-    cmd = ["option", "get", "upload_url_path"]
-    code, stdout, stderr = run_wp_cli(cmd, local_path, args.remote, remote_host, remote_path, True, ddev_wp_path)
+    cmd = ["option", "get", "upload_url_path", "--skip-themes", "--skip-plugins"]
+    code, stdout, stderr = run_wp_cli(
+        cmd, 
+        local_path, 
+        remote, 
+        remote_host, 
+        remote_path, 
+        True, 
+        ddev_wp_path,
+        memory_limit=WP_CLI_MEMORY_LIMIT
+    )
     final_url = stdout.strip() if code == 0 and stdout.strip() else "No configurado (usando valor predeterminado)"
     
+    # Limpiar mensajes de error de memoria en la salida
+    if "Failed to set memory limit" in final_url:
+        final_url = final_url.split("\n")[-1].strip()
+    
     # Ruta física
-    cmd = ["option", "get", "owmp_path"]
-    code, stdout, stderr = run_wp_cli(cmd, local_path, args.remote, remote_host, remote_path, True, ddev_wp_path)
+    cmd = ["option", "get", "owmp_path", "--skip-themes", "--skip-plugins"]
+    code, stdout, stderr = run_wp_cli(
+        cmd, 
+        local_path, 
+        remote, 
+        remote_host, 
+        remote_path, 
+        True, 
+        ddev_wp_path,
+        memory_limit=WP_CLI_MEMORY_LIMIT
+    )
     final_path = stdout.strip() if code == 0 and stdout.strip() else "No configurado (usando valor predeterminado)"
     
+    # Limpiar mensajes de error de memoria en la salida
+    if "Failed to set memory limit" in final_path:
+        final_path = final_path.split("\n")[-1].strip()
+    
     # Modo experto
-    cmd = ["option", "get", "owmp_expert_bool"]
-    code, stdout, stderr = run_wp_cli(cmd, local_path, args.remote, remote_host, remote_path, True, ddev_wp_path)
+    cmd = ["option", "get", "owmp_expert_bool", "--skip-themes", "--skip-plugins"]
+    code, stdout, stderr = run_wp_cli(
+        cmd, 
+        local_path, 
+        remote, 
+        remote_host, 
+        remote_path, 
+        True, 
+        ddev_wp_path,
+        memory_limit=WP_CLI_MEMORY_LIMIT
+    )
     final_expert = "Activado" if code == 0 and stdout.strip() == "1" else "Desactivado"
+    
+    # Limpiar mensajes de error de memoria en la salida
+    if "Failed to set memory limit" in stdout:
+        final_expert = "Activado" if stdout.split("\n")[-1].strip() == "1" else "Desactivado"
     
     print(f"   URL de medios: {final_url}")
     print(f"   Ruta física: {final_path}")
@@ -355,12 +435,9 @@ def main():
     
     print("\n✅ Configuración completada correctamente")
     print("🔍 Los archivos de medios se buscarán ahora en la ruta configurada")
-    if not args.remote:
+    if not remote:
         print("\n💡 Recordatorio: Después de sincronizar la base de datos de producción")
         print("   a desarrollo, ejecute este script para configurar las rutas de medios")
         print("   y asegúrese de que los archivos de medios estén disponibles localmente.")
     
-    return 0
-
-if __name__ == "__main__":
-    sys.exit(main()) 
+    return True 

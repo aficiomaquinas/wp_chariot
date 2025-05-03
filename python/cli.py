@@ -22,6 +22,7 @@ from wp_deploy.commands.sync import sync_files
 from wp_deploy.commands.diff import show_diff
 from wp_deploy.commands.database import sync_database
 from wp_deploy.commands.patch import list_patches, apply_patch, rollback_patch, add_patch, remove_patch
+from wp_deploy.commands.media import configure_media_path
 
 # Grupo de comandos principal
 @click.group()
@@ -418,6 +419,38 @@ def debug_config_command(verbose):
     # Mostrar la configuración completa con valores enmascarados
     print("\n🔧 Configuración como se muestra normalmente (con credenciales ocultas):")
     config.display()
+
+@cli.command("media-path")
+@click.option("--remote", is_flag=True, help="Aplicar en el servidor remoto en lugar de localmente")
+@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada durante la ejecución")
+def media_path_command(remote, verbose):
+    """
+    Configura la ruta de medios de WordPress utilizando el plugin WP Original Media Path.
+    
+    Este comando instala y configura el plugin necesario para gestionar rutas
+    de medios personalizadas según los valores definidos en config.yaml.
+    Mantiene una única fuente de configuración para asegurar la consistencia.
+    
+    Ejemplos:
+      media-path                 # Configurar en entorno local
+      media-path --remote        # Configurar en servidor remoto
+      media-path --verbose       # Mostrar información detallada
+    """
+    # Obtener la configuración de config.yaml
+    config = get_yaml_config()
+    media_config = config.get("media", {})
+    expert_mode = media_config.get("expert_mode", False)
+    
+    success = configure_media_path(
+        media_url=None,  # Forzar a que obtenga el valor de config.yaml
+        expert_mode=expert_mode,
+        media_path=None,  # Forzar a que obtenga el valor de config.yaml
+        remote=remote,
+        verbose=verbose
+    )
+    
+    if not success:
+        sys.exit(1)
 
 def main():
     """
