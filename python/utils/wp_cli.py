@@ -121,7 +121,8 @@ def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False,
 
 def is_plugin_installed(plugin_slug: str, path: Union[str, Path], remote: bool = False,
                        remote_host: Optional[str] = None, remote_path: Optional[str] = None,
-                       use_ddev: bool = True, wp_path: Optional[str] = None) -> bool:
+                       use_ddev: bool = True, wp_path: Optional[str] = None,
+                       memory_limit: Optional[str] = None) -> bool:
     """
     Verifica si un plugin está instalado
     
@@ -133,13 +134,14 @@ def is_plugin_installed(plugin_slug: str, path: Union[str, Path], remote: bool =
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
         wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        memory_limit: Límite de memoria para PHP (opcional)
         
     Returns:
         bool: True si el plugin está instalado, False en caso contrario
     """
     cmd = ["plugin", "list", "--status=inactive,active", "--format=json"]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     if code != 0:
         return False
@@ -155,7 +157,8 @@ def is_plugin_installed(plugin_slug: str, path: Union[str, Path], remote: bool =
 
 def get_plugin_status(plugin_slug: str, path: Union[str, Path], remote: bool = False,
                      remote_host: Optional[str] = None, remote_path: Optional[str] = None,
-                     use_ddev: bool = True, wp_path: Optional[str] = None) -> Optional[str]:
+                     use_ddev: bool = True, wp_path: Optional[str] = None,
+                     memory_limit: Optional[str] = None) -> Optional[str]:
     """
     Obtiene el estado de un plugin (active, inactive, not installed)
     
@@ -167,13 +170,14 @@ def get_plugin_status(plugin_slug: str, path: Union[str, Path], remote: bool = F
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
         wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        memory_limit: Límite de memoria para PHP (opcional)
         
     Returns:
         Optional[str]: Estado del plugin ("active", "inactive", None si no está instalado)
     """
     cmd = ["plugin", "list", "--format=json"]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     if code != 0:
         return None
@@ -190,7 +194,7 @@ def get_plugin_status(plugin_slug: str, path: Union[str, Path], remote: bool = F
 def install_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = False,
                   remote_host: Optional[str] = None, remote_path: Optional[str] = None,
                   use_ddev: bool = True, wp_path: Optional[str] = None, 
-                  use_url: bool = False) -> bool:
+                  use_url: bool = False, memory_limit: Optional[str] = None) -> bool:
     """
     Instala un plugin de WordPress
     
@@ -203,6 +207,7 @@ def install_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = Fals
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
         wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
         use_url: Si es True, plugin_slug se interpreta como una URL
+        memory_limit: Límite de memoria para PHP (opcional)
         
     Returns:
         bool: True si el plugin se instaló correctamente, False en caso contrario
@@ -212,7 +217,7 @@ def install_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = Fals
     if use_url:
         cmd.append("--force")
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     if code != 0:
         print(f"Error al instalar el plugin: {stderr}")
@@ -226,7 +231,8 @@ def install_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = Fals
 
 def activate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = False,
                    remote_host: Optional[str] = None, remote_path: Optional[str] = None,
-                   use_ddev: bool = True, wp_path: Optional[str] = None) -> bool:
+                   use_ddev: bool = True, wp_path: Optional[str] = None,
+                   memory_limit: Optional[str] = None) -> bool:
     """
     Activa un plugin de WordPress
     
@@ -238,12 +244,13 @@ def activate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = Fal
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
         wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        memory_limit: Límite de memoria para PHP (opcional)
         
     Returns:
         bool: True si el plugin se activó correctamente, False en caso contrario
     """
     # Verificar el estado actual del plugin
-    status = get_plugin_status(plugin_slug, path, remote, remote_host, remote_path, use_ddev, wp_path)
+    status = get_plugin_status(plugin_slug, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     # Si ya está activo, no hacer nada
     if status == "active":
@@ -256,7 +263,7 @@ def activate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = Fal
     # Activar el plugin
     cmd = ["plugin", "activate", plugin_slug]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     if code != 0:
         print(f"Error al activar el plugin: {stderr}")
@@ -270,7 +277,8 @@ def activate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = Fal
 
 def deactivate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = False,
                      remote_host: Optional[str] = None, remote_path: Optional[str] = None,
-                     use_ddev: bool = True, wp_path: Optional[str] = None) -> bool:
+                     use_ddev: bool = True, wp_path: Optional[str] = None,
+                     memory_limit: Optional[str] = None) -> bool:
     """
     Desactiva un plugin de WordPress
     
@@ -282,12 +290,13 @@ def deactivate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = F
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
         wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        memory_limit: Límite de memoria para PHP (opcional)
         
     Returns:
         bool: True si el plugin se desactivó correctamente, False en caso contrario
     """
     # Verificar el estado actual del plugin
-    status = get_plugin_status(plugin_slug, path, remote, remote_host, remote_path, use_ddev, wp_path)
+    status = get_plugin_status(plugin_slug, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     # Si ya está inactivo o no está instalado, no hacer nada
     if status != "active":
@@ -296,7 +305,7 @@ def deactivate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = F
     # Desactivar el plugin
     cmd = ["plugin", "deactivate", plugin_slug]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     if code != 0:
         print(f"Error al desactivar el plugin: {stderr}")
@@ -306,7 +315,8 @@ def deactivate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = F
 
 def get_plugin_info(plugin_slug: str, path: Union[str, Path], remote: bool = False,
                    remote_host: Optional[str] = None, remote_path: Optional[str] = None,
-                   use_ddev: bool = True, wp_path: Optional[str] = None) -> Dict[str, Any]:
+                   use_ddev: bool = True, wp_path: Optional[str] = None,
+                   memory_limit: Optional[str] = None) -> Dict[str, Any]:
     """
     Obtiene información sobre un plugin
     
@@ -318,13 +328,14 @@ def get_plugin_info(plugin_slug: str, path: Union[str, Path], remote: bool = Fal
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
         wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        memory_limit: Límite de memoria para PHP (opcional)
         
     Returns:
         Dict[str, Any]: Información del plugin
     """
     cmd = ["plugin", "get", plugin_slug, "--format=json"]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     if code != 0:
         print(f"⚠️ Error al obtener información del plugin: {stderr}")
@@ -339,7 +350,8 @@ def get_plugin_info(plugin_slug: str, path: Union[str, Path], remote: bool = Fal
 
 def get_theme_info(theme_slug: str, path: Union[str, Path], remote: bool = False,
                   remote_host: Optional[str] = None, remote_path: Optional[str] = None,
-                  use_ddev: bool = True, wp_path: Optional[str] = None) -> Dict[str, Any]:
+                  use_ddev: bool = True, wp_path: Optional[str] = None,
+                  memory_limit: Optional[str] = None) -> Dict[str, Any]:
     """
     Obtiene información sobre un tema
     
@@ -351,13 +363,14 @@ def get_theme_info(theme_slug: str, path: Union[str, Path], remote: bool = False
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
         wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        memory_limit: Límite de memoria para PHP (opcional)
         
     Returns:
         Dict[str, Any]: Información del tema
     """
     cmd = ["theme", "get", theme_slug, "--format=json"]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     if code != 0:
         print(f"⚠️ Error al obtener información del tema: {stderr}")
@@ -492,7 +505,8 @@ def get_item_version_from_path(file_path: str, path: Union[str, Path], remote: b
 
 def flush_cache(path: Union[str, Path], remote: bool = False,
                remote_host: Optional[str] = None, remote_path: Optional[str] = None,
-               use_ddev: bool = True, wp_path: Optional[str] = None) -> bool:
+               use_ddev: bool = True, wp_path: Optional[str] = None,
+               memory_limit: Optional[str] = None) -> bool:
     """
     Limpia la caché de WordPress
     
@@ -503,13 +517,14 @@ def flush_cache(path: Union[str, Path], remote: bool = False,
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
         wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        memory_limit: Límite de memoria para PHP (opcional)
         
     Returns:
         bool: True si se limpió correctamente, False en caso contrario
     """
     cmd = ["cache", "flush"]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     if code != 0:
         print(f"⚠️ Error al limpiar la caché: {stderr}")
@@ -521,7 +536,7 @@ def flush_cache(path: Union[str, Path], remote: bool = False,
 def update_option(option_name: str, option_value: str, path: Union[str, Path], 
                  remote: bool = False, remote_host: Optional[str] = None, 
                  remote_path: Optional[str] = None, use_ddev: bool = True, 
-                 wp_path: Optional[str] = None) -> bool:
+                 wp_path: Optional[str] = None, memory_limit: Optional[str] = None) -> bool:
     """
     Actualiza una opción de WordPress
     
@@ -534,13 +549,14 @@ def update_option(option_name: str, option_value: str, path: Union[str, Path],
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
         wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        memory_limit: Límite de memoria para PHP (opcional)
         
     Returns:
         bool: True si se actualizó correctamente, False en caso contrario
     """
     cmd = ["option", "update", option_name, option_value]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     if code != 0:
         print(f"⚠️ Error al actualizar la opción {option_name}: {stderr}")
@@ -552,7 +568,7 @@ def update_option(option_name: str, option_value: str, path: Union[str, Path],
 def update_media_path(new_path: str, path: Union[str, Path], 
                      remote: bool = False, remote_host: Optional[str] = None, 
                      remote_path: Optional[str] = None, use_ddev: bool = True,
-                     wp_path: Optional[str] = None) -> bool:
+                     wp_path: Optional[str] = None, memory_limit: Optional[str] = None) -> bool:
     """
     Actualiza la ruta de los medios en WordPress
     
@@ -564,24 +580,26 @@ def update_media_path(new_path: str, path: Union[str, Path],
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
         wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        memory_limit: Límite de memoria para PHP (opcional)
         
     Returns:
         bool: True si se actualizó correctamente, False en caso contrario
     """
     # Actualizar la opción upload_path
-    upload_success = update_option("upload_path", new_path, path, remote, remote_host, remote_path, use_ddev, wp_path)
+    upload_success = update_option("upload_path", new_path, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     if not upload_success:
         return False
         
     # Limpiar la caché para que los cambios surtan efecto
-    cache_success = flush_cache(path, remote, remote_host, remote_path, use_ddev, wp_path)
+    cache_success = flush_cache(path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     return upload_success and cache_success 
 
 def is_wordpress_installed(path: Union[str, Path], remote: bool = False,
                          remote_host: Optional[str] = None, remote_path: Optional[str] = None,
-                         use_ddev: bool = True, wp_path: Optional[str] = None) -> bool:
+                         use_ddev: bool = True, wp_path: Optional[str] = None,
+                         memory_limit: Optional[str] = None) -> bool:
     """
     Verifica si WordPress está correctamente instalado
     
@@ -592,6 +610,7 @@ def is_wordpress_installed(path: Union[str, Path], remote: bool = False,
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
         wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        memory_limit: Límite de memoria para PHP (opcional)
         
     Returns:
         bool: True si WordPress está instalado, False en caso contrario
@@ -599,6 +618,6 @@ def is_wordpress_installed(path: Union[str, Path], remote: bool = False,
     # Verificar existencia de archivos básicos
     cmd = ["core", "is-installed"]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
     
     return code == 0 

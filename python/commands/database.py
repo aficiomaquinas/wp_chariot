@@ -33,18 +33,10 @@ class DatabaseSynchronizer:
         # Guardar nivel de verbosidad
         self.verbose = verbose
         
-        # Cargar directamente el archivo config.yaml para evitar problemas de importación
-        import yaml
-        from pathlib import Path
+        # Cargar la configuración usando el sistema de sitios
+        config_obj = get_yaml_config(verbose=self.verbose)
         
-        # Encontrar la ruta del archivo de configuración
-        current_script_path = Path(__file__).resolve().parent.parent.parent
-        config_file_path = current_script_path / "config.yaml"
-        
-        if self.verbose:
-            print(f"🔍 Cargando configuración directamente desde: {config_file_path}")
-        
-        # Valores predeterminados por si no se puede cargar el archivo
+        # Valores predeterminados por si no se puede cargar la configuración
         self.remote_host = "example-server"
         self.remote_path = ""
         self.local_path = Path(".")
@@ -56,41 +48,36 @@ class DatabaseSynchronizer:
         self.remote_db_host = "localhost"
         self.production_safety = True
         
-        # Cargar el archivo YAML directamente
-        try:
-            with open(config_file_path, 'r') as f:
-                config_data = yaml.safe_load(f)
-                
+        # Cargar valores de la configuración
+        if config_obj:
+            # Obtener la configuración como diccionario
+            config = config_obj.config
+            
             # Cargar configuración SSH
-            if 'ssh' in config_data:
-                ssh_config = config_data['ssh']
+            if 'ssh' in config:
+                ssh_config = config['ssh']
                 self.remote_host = ssh_config.get('remote_host', self.remote_host)
                 self.remote_path = ssh_config.get('remote_path', self.remote_path)
                 self.local_path = Path(ssh_config.get('local_path', str(self.local_path)))
             
             # Cargar configuración de seguridad
-            if 'security' in config_data:
-                security_config = config_data['security']
+            if 'security' in config:
+                security_config = config['security']
                 self.production_safety = security_config.get('production_safety', 'enabled') == 'enabled'
             
             # Cargar configuración de URLs
-            if 'urls' in config_data:
-                urls_config = config_data['urls']
+            if 'urls' in config:
+                urls_config = config['urls']
                 self.remote_url = urls_config.get('remote', self.remote_url)
                 self.local_url = urls_config.get('local', self.local_url)
             
             # Cargar configuración de base de datos remota
-            if 'database' in config_data and 'remote' in config_data['database']:
-                db_config = config_data['database']['remote']
+            if 'database' in config and 'remote' in config['database']:
+                db_config = config['database']['remote']
                 self.remote_db_name = db_config.get('name', self.remote_db_name)
                 self.remote_db_user = db_config.get('user', self.remote_db_user)
                 self.remote_db_pass = db_config.get('password', self.remote_db_pass)
                 self.remote_db_host = db_config.get('host', self.remote_db_host)
-        
-        except Exception as e:
-            import traceback
-            print(f"❌ Error al cargar configuración: {str(e)}")
-            traceback.print_exc()
         
         # Asegurarse de que las URLs no terminen con /
         if self.remote_url.endswith("/"):
@@ -114,6 +101,8 @@ class DatabaseSynchronizer:
         
         # Guardar referencia a config para métodos que la necesitan
         self.config = {'security': {'backups': 'disabled'}}
+        if config_obj and hasattr(config_obj, 'config'):
+            self.config = config_obj.config
         
         # Verificar si se están usando valores por defecto
         default_values = ["example-server", "nombre_db_remota", "usuario_db_remota", "contraseña_db_remota"]
