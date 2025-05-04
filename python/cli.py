@@ -23,6 +23,7 @@ from commands.diff import show_diff
 from commands.database import sync_database
 from commands.patch import list_patches, apply_patch, rollback_patch, add_patch, remove_patch
 from commands.media import configure_media_path
+from commands.backup import create_full_backup
 
 # Definir una opción común para el sitio
 site_option = click.option(
@@ -66,17 +67,52 @@ def diff_command(all, verbose, patches, site):
 @click.option("--direction", type=click.Choice(['from-remote', 'to-remote']), 
               default='from-remote', help="Dirección de la sincronización")
 @click.option("--clean/--no-clean", default=True, help="Limpiar archivos excluidos después de sincronizar")
+@click.option("--skip-backup", is_flag=True, help="Omitir la creación del backup completo antes de sincronizar desde remoto")
+@click.option("--patch-exclusions", type=click.Choice(['default', 'disabled', 'local-only', 'remote-only', 'both-ways']), 
+              default='default', help="Método de exclusión de parches registrados: 'default' usa la configuración global, 'disabled' no excluye parches")
 @site_option
-def sync_files_command(dry_run, direction, clean, site):
+def sync_files_command(dry_run, direction, clean, skip_backup, patch_exclusions, site):
     """
     Sincroniza archivos entre el servidor remoto y el entorno local.
+    
+    Por defecto, cuando se sincroniza desde el servidor remoto (from-remote), 
+    se crea automáticamente un backup completo del entorno local antes de 
+    realizar cualquier cambio. Este backup es independiente de las exclusiones 
+    configuradas y guarda todos los archivos.
+    
+    Use --skip-backup si no desea crear este backup completo.
+    
+    El sistema puede proteger automáticamente los archivos con parches registrados
+    durante la sincronización. Use --patch-exclusions para controlar este comportamiento:
+    - default: usa la configuración global definida en config.yaml
+    - disabled: no excluye automáticamente archivos con parches
+    - local-only: excluye parches solo cuando se sincroniza desde remoto a local
+    - remote-only: excluye parches solo cuando se sincroniza desde local a remoto  
+    - both-ways: excluye parches en ambas direcciones
     """
     # Seleccionar sitio si es necesario
     config = get_yaml_config()
     if not config.select_site(site):
         sys.exit(1)
-        
-    success = sync_files(direction=direction, dry_run=dry_run, clean=clean)
+    
+    # Si el usuario ha especificado un modo de exclusión de parches diferente al predeterminado,
+    # modificar temporalmente la configuración
+    original_exclusions_mode = None
+    if patch_exclusions != 'default':
+        # Guardar el valor original
+        original_exclusions_mode = config.get("patches", "exclusions_mode", default="local-only")
+        # Modificar la configuración temporalmente
+        if "patches" not in config.config:
+            config.config["patches"] = {}
+        config.config["patches"]["exclusions_mode"] = patch_exclusions
+    
+    # Ejecutar sincronización
+    success = sync_files(direction=direction, dry_run=dry_run, clean=clean, skip_full_backup=skip_backup)
+    
+    # Restaurar la configuración original si se modificó
+    if original_exclusions_mode is not None:
+        config.config["patches"]["exclusions_mode"] = original_exclusions_mode
+    
     if not success:
         sys.exit(1)
     
@@ -871,6 +907,46 @@ def show_ddev_config(site):
         print(f"\n🌐 URL remota configurada: {config.config['urls']['remote']}")
     if 'urls' in config.config and 'local' in config.config['urls']:
         print(f"🖥️ URL local configurada: {config.config['urls']['local']}")
+
+@cli.command("backup")
+@click.option("--output-dir", help="Directorio donde guardar el backup (opcional)")
+@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada durante la creación del backup")
+@site_option
+def backup_command(output_dir, verbose, site):
+    """
+    Crea un backup completo del entorno local.
+    
+    Este comando genera un archivo ZIP con todos los archivos del entorno local,
+    independientemente de las exclusiones configuradas para la sincronización.
+    El backup incluye todos los archivos, incluidos los parches aplicados.
+    
+    Si no se especifica un directorio de salida con --output-dir, el backup
+    se guardará en el directorio 'backups' dentro del directorio padre
+    del entorno local (un nivel arriba del directorio público de WordPress).
+    
+    Ejemplos:
+      backup                      # Crea un backup en el directorio predeterminado
+      backup --output-dir /tmp    # Guarda el backup en /tmp
+    """
+    # Seleccionar sitio si es necesario
+    config = get_yaml_config(verbose=verbose)
+    if not config.select_site(site):
+        sys.exit(1)
+        
+    site_name = config.current_site or "wordpress"
+    
+    print(f"📦 Creando backup completo del entorno local para '{site_name}'...")
+    
+    try:
+        backup_path = create_full_backup(site_alias=site, output_dir=output_dir)
+        print(f"✅ Backup completado con éxito")
+        print(f"📂 Archivo guardado en: {backup_path}")
+    except Exception as e:
+        print(f"❌ Error al crear el backup: {str(e)}")
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
 
 def main():
     """

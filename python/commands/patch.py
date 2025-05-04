@@ -68,9 +68,8 @@ class PatchManager:
             self.remote_path = self.config.get_strict("ssh", "remote_path")
             self.local_path = Path(self.config.get_strict("ssh", "local_path"))
             
-            # Asegurarse de que las rutas remotas terminen con /
-            if not self.remote_path.endswith("/"):
-                self.remote_path += "/"
+            # Asegurarse de que las rutas remotas terminen con un solo /
+            self.remote_path = self.remote_path.rstrip('/') + '/'
             
             # Cargar configuración de seguridad
             self.production_safety = get_nested(self.config, "security", "production_safety") == "enabled"
@@ -195,6 +194,7 @@ class PatchManager:
                 description = info.get("description", "Sin descripción")
                 applied_date = info.get("applied_date", "")
                 local_checksum = info.get("local_checksum", "Desconocido")
+                original_checksum = info.get("original_checksum", "")
                 local_version = info.get("local_version", "Desconocida")
                 remote_version = info.get("remote_version", "Desconocida")
                 
@@ -240,11 +240,29 @@ class PatchManager:
                 print(f"   • Descripción: {description}")
                 print(f"   • Estado: {status}")
                 
+                # Verificar si hay diferencias entre checksums que indiquen cambios
+                if original_checksum and local_checksum and original_checksum != local_checksum:
+                    print(f"   • Cambios: ✅ Detectados (checksums diferentes)")
+                elif original_checksum and local_checksum and original_checksum == local_checksum:
+                    print(f"   • Cambios: ❌ No detectados (checksums idénticos)")
+                
                 if verbose:
                     print(f"   • Versión local: {local_version}")
                     if connected:
                         print(f"   • Versión remota: {remote_version}")
-                    print(f"   • MD5 local registrado: {local_checksum}")
+                    
+                    if original_checksum:
+                        print(f"   • MD5 original: {original_checksum}")
+                    print(f"   • MD5 local: {local_checksum}")
+                    patched_checksum = info.get("patched_checksum", "")
+                    if patched_checksum:
+                        print(f"   • MD5 parcheado: {patched_checksum}")
+                    
+                    # Mostrar backups
+                    if info.get("local_backup_file", ""):
+                        print(f"   • Backup local: {info.get('local_backup_file')}")
+                    if info.get("backup_file", ""):
+                        print(f"   • Backup remoto: {info.get('backup_file')}")
                     
                     if applied_date:
                         print(f"   • Aplicado: {formatted_date}")
@@ -332,6 +350,13 @@ class PatchManager:
         """
         Registra un nuevo parche en el archivo lock
         
+        Flujo correcto:
+        1. Verifica que el archivo local existe y está modificado
+        2. Descarga la versión original desde el servidor remoto
+        3. Guarda esa versión como backup local
+        4. Calcula checksums de ambas versiones
+        5. Registra el parche con toda la información necesaria
+        
         Args:
             file_path: Ruta relativa al archivo
             description: Descripción del parche
@@ -348,12 +373,81 @@ class PatchManager:
             print("   Debes proporcionar una ruta relativa válida desde la raíz del proyecto.")
             return False
             
-        # Calcular checksum del archivo local
+        # Calcular checksum del archivo local (ya modificado)
         local_checksum = self.calculate_checksum(local_file)
         if not local_checksum:
             print(f"❌ Error: No se pudo calcular el checksum del archivo local")
             return False
             
+        # Verificar conexión con el servidor remoto para descargar el archivo original
+        if not self.check_remote_connection():
+            print("❌ Error: No se pudo conectar con el servidor remoto para obtener el archivo original")
+            return False
+            
+        # Obtener el archivo original desde el servidor remoto
+        remote_file = f"{self.remote_path}{file_path}"
+        original_checksum = ""
+        backup_path = local_file.with_suffix(f"{local_file.suffix}.original.bak")
+        local_backup_file = str(backup_path.relative_to(self.local_path))
+        backup_checksum = ""
+        remote_file_exists = False
+            
+        with SSHClient(self.remote_host) as ssh:
+            if not ssh.client:
+                print("❌ Error: No se pudo establecer conexión SSH")
+                return False
+                
+            # Verificar si el archivo existe en el servidor
+            cmd = f"test -f '{remote_file}' && echo 'EXISTS' || echo 'NOT_EXISTS'"
+            code, stdout, stderr = ssh.execute(cmd)
+            
+            if "EXISTS" in stdout:
+                remote_file_exists = True
+                
+                # Obtener checksum del archivo remoto
+                original_checksum = self.get_remote_file_checksum(ssh, remote_file)
+                
+                # Comparar checksums para verificar si hay cambios
+                if original_checksum == local_checksum:
+                    print("⚠️ Advertencia: El archivo local y el remoto tienen el mismo checksum")
+                    print("   No parece haber modificaciones para parchar.")
+                    confirm = input("   ¿Deseas continuar de todos modos? (s/n): ")
+                    if confirm.lower() != "s":
+                        print("   Operación cancelada.")
+                        return False
+                
+                # Descargar el archivo original como backup
+                print(f"📥 Descargando archivo original desde el servidor...")
+                if not ssh.download_file(remote_file, backup_path):
+                    print(f"❌ Error: No se pudo descargar el archivo original desde el servidor")
+                    return False
+                    
+                # Verificar que el backup se creó correctamente
+                if not backup_path.exists():
+                    print(f"❌ Error: No se pudo crear el backup del archivo original")
+                    return False
+                    
+                # Calcular checksum del backup
+                backup_checksum = self.calculate_checksum(backup_path)
+                if not backup_checksum:
+                    print(f"❌ Error: No se pudo calcular el checksum del backup")
+                    return False
+                    
+                # Verificar que el checksum del backup coincide con el remoto
+                if backup_checksum != original_checksum:
+                    print(f"⚠️ Advertencia: El checksum del backup no coincide con el remoto")
+                    print(f"   Checksum remoto: {original_checksum}")
+                    print(f"   Checksum backup: {backup_checksum}")
+                    confirm = input("   ¿Deseas continuar de todos modos? (s/n): ")
+                    if confirm.lower() != "s":
+                        print("   Operación cancelada.")
+                        return False
+                
+                print(f"✅ Archivo original guardado como: {backup_path.name}")
+            else:
+                print(f"ℹ️ El archivo no existe en el servidor. Se considerará un archivo nuevo.")
+                original_checksum = ""
+        
         # Obtener configuración DDEV
         ddev_wp_path = get_nested(self.config, "ddev", "webroot")
 
@@ -365,6 +459,22 @@ class PatchManager:
             use_ddev=True,
             wp_path=ddev_wp_path
         )
+        
+        # Obtener versión remota del plugin/tema si existe
+        remote_version = ""
+        if remote_file_exists:
+            try:
+                _, _, remote_version = get_item_version_from_path(
+                    file_path, 
+                    self.remote_path,
+                    remote=True,
+                    remote_host=self.remote_host,
+                    remote_path=self.remote_path,
+                    memory_limit=self.wp_memory_limit,
+                    use_ddev=False
+                )
+            except Exception as e:
+                print(f"⚠️ No se pudo obtener la versión remota: {str(e)}")
         
         # Crear o actualizar entrada en el archivo lock
         if "patches" not in self.lock_data:
@@ -385,10 +495,14 @@ class PatchManager:
         self.lock_data["patches"][file_path] = {
             "description": description,
             "local_checksum": local_checksum,
+            "original_checksum": original_checksum,
             "registered_date": datetime.datetime.now().isoformat(),
             "item_type": item_type,
             "item_slug": item_slug,
-            "local_version": local_version
+            "local_version": local_version,
+            "remote_version": remote_version,
+            "local_backup_file": local_backup_file,
+            "local_backup_checksum": backup_checksum
         }
         
         # Guardar archivo lock
@@ -396,7 +510,13 @@ class PatchManager:
         
         print(f"✅ Parche registrado: {file_path}")
         if item_type != "other" and local_version:
-            print(f"   Detectado {item_type}: {item_slug} (versión {local_version})")
+            print(f"   Detectado {item_type}: {item_slug} (versión local {local_version})")
+            if remote_version:
+                print(f"   Versión remota: {remote_version}")
+        
+        if original_checksum and original_checksum != local_checksum:
+            print(f"   Se han detectado modificaciones en el archivo")
+        
         print(f"   Para aplicar el parche, ejecuta: patch {file_path}")
         
         return True
@@ -500,7 +620,7 @@ class PatchManager:
                 ssh.connect()
             
             # Verificar si la aplicación del parche es segura
-            remote_file = f"{self.remote_path}/{file_path}"
+            remote_file = f"{self.remote_path.rstrip('/')}/{file_path}"
             
             # Comprobar si el archivo existe en el servidor
             cmd = f"test -f \"{remote_file}\" && echo \"EXISTS\" || echo \"NOT_EXISTS\""
@@ -544,7 +664,7 @@ class PatchManager:
             if remote_exists and not dry_run:
                 # Generar nombre de archivo de backup con timestamp
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                backup_path = f"{remote_file}.bak.{timestamp}"
+                backup_path = f"{self.remote_path.rstrip('/')}/{file_path}.bak.{timestamp}"
                 
                 # Crear backup
                 cmd = f"cp -f \"{remote_file}\" \"{backup_path}\""
@@ -615,10 +735,10 @@ class PatchManager:
                 patch_info.update({
                     "applied_date": datetime.datetime.now().isoformat(),
                     "backup_file": backup_file,
-                    "patched_checksum": local_checksum
+                    "patched_checksum": local_checksum  # Checksum del archivo modificado que se subió
                 })
                 
-                # Si es un plugin o tema, obtener la versión remota
+                # Si es un plugin o tema, obtener la versión remota actualizada
                 if patch_info.get("item_type") in ["plugin", "theme"] and patch_info.get("item_slug"):
                     try:
                         _, _, remote_version = get_item_version_from_path(
@@ -706,7 +826,7 @@ class PatchManager:
         if not self.check_remote_connection():
             return False
             
-        remote_file = f"{self.remote_path}/{file_path}"
+        remote_file = f"{self.remote_path.rstrip('/')}/{file_path}"
         
         # Si es modo simulación, solo mostrar qué se haría
         if dry_run:
@@ -1000,6 +1120,41 @@ class PatchManager:
             print(f"   • Servidor remoto: {self.remote_host}:{self.remote_path}")
             
         print("")
+
+    def _load_patched_files(self) -> List[Tuple[str, str]]:
+        """
+        Carga la lista de archivos con parches registrados y sus backups desde el archivo lock
+        
+        Returns:
+            List[Tuple[str, str]]: Lista de tuplas con (archivo parcheado, backup local)
+        """
+        patched_files = []
+        
+        # Verificar si existe el archivo lock
+        if self.lock_data and "patches" in self.lock_data:
+            # Extraer rutas de archivos con parches y sus backups
+            for file_path, patch_info in self.lock_data["patches"].items():
+                # Agregar el archivo parcheado
+                local_backup = patch_info.get("local_backup_file", "")
+                
+                if local_backup:
+                    patched_files.append((file_path, local_backup))
+                    print(f"🔧 Excluyendo parche: {file_path} y su backup local: {local_backup}")
+                else:
+                    patched_files.append((file_path, None))
+                    print(f"🔧 Excluyendo parche: {file_path} (sin backup local)")
+                
+                # Agregar backup remoto si existe
+                remote_backup = patch_info.get("backup_file", "")
+                if remote_backup and remote_backup.startswith(self.remote_path):
+                    # Convertir la ruta remota completa a una ruta relativa
+                    relative_backup = remote_backup[len(self.remote_path):]
+                    patched_files.append((file_path, relative_backup))
+                
+            if patched_files:
+                print(f"🔧 Se encontraron {len(patched_files)} parches y backups para excluir")
+                
+        return patched_files
 
 def list_patches(verbose: bool = False):
     """

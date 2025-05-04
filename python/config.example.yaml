@@ -19,6 +19,14 @@ security:
   production_safety: "enabled"  # Protección contra sobrescritura en producción
   backups: "enabled"  # Crear backups automáticos antes de operaciones peligrosas
 
+# Configuración de parches y sincronización
+patches:
+  exclusions_mode: "local-only"  # Cómo manejar parches durante la sincronización:
+                                 # "local-only": Excluir parches cuando se sincroniza desde remoto a local
+                                 # "both-ways": Excluir parches en ambas direcciones
+                                 # "remote-only": Excluir parches cuando se sincroniza desde local a remoto
+                                 # "disabled": No excluir parches automáticamente
+
 # Exclusiones por defecto (se pueden sobrescribir por sitio)
 exclusions:
   # Directorios de caché y optimización

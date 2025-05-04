@@ -299,6 +299,7 @@ def determine_patch_status(patch_info: Dict[str, Any],
         "local_exists": local_exists,
         "current_local_checksum": current_local_checksum,
         "registered_local_checksum": registered_local_checksum,
+        "original_checksum": patch_info.get("original_checksum", ""),
         "current_remote_version": current_remote_version,
         "registered_remote_version": patch_info.get("remote_version", ""),
         "messages": []
@@ -308,6 +309,7 @@ def determine_patch_status(patch_info: Dict[str, Any],
         if patch_info.get("applied_date"):
             # Parche está marcado como aplicado
             patched_checksum = patch_info.get("patched_checksum", "")
+            original_checksum = patch_info.get("original_checksum", "")
             
             if remote_checksum == patched_checksum:
                 # El checksum remoto coincide con el del parche aplicado
@@ -316,6 +318,10 @@ def determine_patch_status(patch_info: Dict[str, Any],
                 else:
                     # El archivo local ha cambiado, parche obsoleto
                     return PATCH_STATUS_OBSOLETED, details
+            elif remote_checksum == original_checksum:
+                # El checksum remoto coincide con el original (parche revertido o nunca aplicado)
+                details["messages"].append(f"El archivo remoto coincide con la versión original")
+                return PATCH_STATUS_PENDING, details
             else:
                 # El checksum remoto no coincide, parche desajustado
                 if details.get("current_remote_version") != patch_info.get("remote_version"):
@@ -326,12 +332,20 @@ def determine_patch_status(patch_info: Dict[str, Any],
                     return PATCH_STATUS_MISMATCHED, details
         else:
             # Parche no está aplicado
-            if local_exists and current_local_checksum == registered_local_checksum:
-                # El archivo local coincide con el registrado, parche pendiente
-                return PATCH_STATUS_PENDING, details
+            original_checksum = patch_info.get("original_checksum", "")
+            
+            if remote_checksum == original_checksum:
+                # El archivo remoto coincide con el original
+                if local_exists and current_local_checksum == registered_local_checksum:
+                    # El archivo local coincide con el registrado, parche pendiente
+                    return PATCH_STATUS_PENDING, details
+                else:
+                    # El archivo local ha cambiado, parche huérfano
+                    return PATCH_STATUS_ORPHANED, details
             else:
-                # El archivo local ha cambiado, parche huérfano
-                return PATCH_STATUS_ORPHANED, details
+                # El archivo remoto no coincide con el original
+                details["messages"].append(f"El archivo remoto ha cambiado respecto al original")
+                return PATCH_STATUS_STALE, details
     else:
         # El archivo remoto no existe
         details["messages"].append(f"El archivo remoto no existe")

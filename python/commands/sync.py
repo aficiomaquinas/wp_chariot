@@ -9,12 +9,14 @@ import os
 import sys
 import tempfile
 import shutil
+import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union, Set
 
 from config_yaml import get_yaml_config
 from utils.ssh import SSHClient, run_rsync
 from utils.filesystem import ensure_dir_exists, create_backup
+from commands.backup import create_full_backup
 
 class FileSynchronizer:
     """
@@ -32,9 +34,8 @@ class FileSynchronizer:
         self.remote_path = self.config.get("ssh", "remote_path")
         self.local_path = Path(self.config.get("ssh", "local_path"))
         
-        # Asegurarse de que las rutas remotas terminen con /
-        if not self.remote_path.endswith("/"):
-            self.remote_path += "/"
+        # Asegurarse de que las rutas remotas terminen con un solo / 
+        self.remote_path = self.remote_path.rstrip('/') + '/'
             
         # Cargar exclusiones
         self.exclusions = self.config.get_exclusions()
@@ -44,6 +45,36 @@ class FileSynchronizer:
         
         # Cargar límite de memoria para WP-CLI
         self.wp_memory_limit = self.config.get_wp_memory_limit()
+        
+    def _load_patched_files(self) -> List[str]:
+        """
+        Carga la lista de archivos con parches registrados y sus backups desde el archivo lock
+        
+        Returns:
+            List[str]: Lista de archivos con parches registrados y sus backups
+        """
+        try:
+            from commands.patch import PatchManager
+            
+            # Crear instancia del PatchManager para acceder a sus métodos
+            patch_manager = PatchManager()
+            
+            # Usar el método _load_patched_files del PatchManager que devuelve tuplas (archivo, backup)
+            patched_tuples = patch_manager._load_patched_files()
+            
+            # Convertir las tuplas a una lista plana de archivos para exclusión
+            patched_files = []
+            for file_path, backup_path in patched_tuples:
+                if file_path:
+                    patched_files.append(file_path)
+                if backup_path:
+                    patched_files.append(backup_path)
+            
+            return patched_files
+            
+        except Exception as e:
+            print(f"⚠️ Error al cargar archivo de parches: {str(e)}")
+            return []
         
     def _prepare_paths(self, direction: str) -> Tuple[str, str]:
         """
@@ -55,14 +86,17 @@ class FileSynchronizer:
         Returns:
             Tuple[str, str]: Rutas de origen y destino
         """
+        # Asegurarse de que la ruta remota no termine con múltiples /
+        remote_path = self.remote_path.rstrip('/')
+        
         if direction == "from-remote":
             # Desde remoto a local
-            source = f"{self.remote_host}:{self.remote_path}"
+            source = f"{self.remote_host}:{remote_path}"
             dest = str(self.local_path)
         else:
             # Desde local a remoto
             source = str(self.local_path)
-            dest = f"{self.remote_host}:{self.remote_path}"
+            dest = f"{self.remote_host}:{remote_path}"
             
         return source, dest
         
@@ -590,8 +624,28 @@ class FileSynchronizer:
             
         if direction == "from-remote":
             print(f"📥 Sincronizando archivos desde el servidor remoto al entorno local...")
+            
+            if self.config.get("security", "backups") == "enabled":
+                # Crear un backup completo antes de sincronizar desde remoto
+                if not dry_run:
+                    print("📦 Creando backup completo del entorno local antes de sincronizar...")
+                    try:
+                        backup_path = create_full_backup()
+                        print(f"✅ Backup completo creado en: {backup_path}")
+                    except Exception as e:
+                        print(f"⚠️ Error al crear backup completo: {str(e)}")
+                        # Preguntar si continuar a pesar del error de backup
+                        confirm = input("   ¿Desea continuar con la sincronización sin backup? (escriba 'si' para confirmar): ")
+                        if confirm.lower() != "si":
+                            print("❌ Operación cancelada.")
+                            return False
+            else:
+                print("⚠️ ADVERTENCIA: Protección de backups está desactivada.")
+                print("   No se creará un backup completo del entorno local antes de sincronizar.")
         else:
             print(f"📤 Sincronizando archivos desde el entorno local al servidor remoto...")
+            print("⚠️ ADVERTENCIA: Backups remotos no se realizaran en este entorno.")
+            print("   Para ambientes productivos se recomienda contar con un sistema de snapshots remotos para restaurar el entorno en caso de fallo.")
             
             # Verificar si hay protección de producción activada
             if self.config.get("security", "production_safety") == "enabled":
@@ -646,21 +700,37 @@ class FileSynchronizer:
             for i, file_pattern in enumerate(self.protected_files):
                 exclusions[f"protected_{i}"] = file_pattern
         
+        # Añadir archivos con parches registrados según la configuración
+        exclusions_mode = self.config.get("patches", "exclusions_mode", default="local-only")
+        
+        if exclusions_mode != "disabled":
+            should_exclude_patches = False
+            
+            if exclusions_mode == "both-ways":
+                # Excluir parches en ambas direcciones
+                should_exclude_patches = True
+            elif exclusions_mode == "local-only" and direction == "from-remote":
+                # Excluir parches solo cuando sincronizamos desde remoto a local
+                should_exclude_patches = True
+            elif exclusions_mode == "remote-only" and direction == "to-remote":
+                # Excluir parches solo cuando sincronizamos desde local a remoto
+                should_exclude_patches = True
+                
+            if should_exclude_patches:
+                patched_files = self._load_patched_files()
+                
+                if patched_files:
+                    print(f"🔧 Excluyendo {len(patched_files)} archivos con parches registrados y sus backups específicos")
+                    for i, file_path in enumerate(patched_files):
+                        exclusions[f"patched_{i}"] = file_path
+        
         # Crear copia de seguridad del destino si no es modo simulación
         if not dry_run and direction == "from-remote":
             # Asegurarnos de que el directorio de destino existe
             ensure_dir_exists(self.local_path)
             
-            # Opcionalmente, crear una copia de seguridad
-            if self.config.get("security", "backups") == "enabled":
-                print("📦 Creando copia de seguridad del entorno local...")
-                # Pasar el objeto de configuración para obtener los archivos protegidos
-                backup_path = create_backup(self.local_path, config=self.config)
-                if backup_path:
-                    print(f"✅ Copia de seguridad creada en {backup_path}")
-                else:
-                    print("⚠️ No se pudo crear copia de seguridad")
-                    # No es un error crítico, se puede continuar
+            # Ya no creamos el backup selectivo aquí, pues se crea un backup completo al inicio del método
+            # El backup completo incluye todos los archivos, no solo los protegidos
             
         # Ejecutar rsync
         success, output = run_rsync(
@@ -742,7 +812,7 @@ class FileSynchronizer:
                 
         return True
         
-def sync_files(direction: str = "from-remote", dry_run: bool = False, clean: bool = True) -> bool:
+def sync_files(direction: str = "from-remote", dry_run: bool = False, clean: bool = True, skip_full_backup: bool = False) -> bool:
     """
     Sincroniza archivos entre entornos
     
@@ -757,19 +827,51 @@ def sync_files(direction: str = "from-remote", dry_run: bool = False, clean: boo
     Esta función sigue el patrón "fail fast":
     - Falla inmediatamente si falta información crítica (como los archivos protegidos)
     - No intenta adivinar valores predeterminados
-    - Proporciona mensajes de error específicos que indican cómo resolver el problema
+    - Protege archivos críticos
     
     Args:
         direction: Dirección de la sincronización ("from-remote" o "to-remote")
         dry_run: Si es True, no realiza cambios reales
         clean: Si es True, limpia archivos excluidos después de la sincronización
+        skip_full_backup: Si es True, omite la creación del backup completo antes de sincronizar
         
     Returns:
         bool: True si la sincronización fue exitosa, False en caso contrario
     """
+    # Crear y configurar el sincronizador
     try:
-        synchronizer = FileSynchronizer()
-        return synchronizer.sync(direction=direction, dry_run=dry_run, clean=clean)
+        syncer = FileSynchronizer()
+        
+        # Desactivar el backup completo si se solicita
+        if skip_full_backup:
+            # Guardar referencia al método original
+            original_sync = syncer.sync
+            
+            # Crear un método que envuelve al original y desactiva temporalmente la importación
+            def sync_without_backup(*args, **kwargs):
+                # Guardamos el módulo original
+                import sys
+                original_backup = sys.modules.get('commands.backup', None)
+                
+                # Temporalmente quitamos el módulo
+                if 'commands.backup' in sys.modules:
+                    sys.modules['commands.backup'] = None
+                
+                try:
+                    # Llamar al método original
+                    return original_sync(*args, **kwargs)
+                finally:
+                    # Restaurar el módulo original
+                    if original_backup:
+                        sys.modules['commands.backup'] = original_backup
+            
+            # Reemplazar temporalmente el método
+            syncer.sync = sync_without_backup
+        
+        # Ejecutar la sincronización
+        return syncer.sync(direction=direction, dry_run=dry_run, clean=clean)
     except Exception as e:
-        print(f"❌ Error crítico durante la sincronización: {str(e)}")
+        print(f"❌ Error durante la sincronización: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False 
