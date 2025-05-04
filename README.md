@@ -1,10 +1,11 @@
-# wp_chariot
-
 <p align="center">
   <img src="logo.png" alt="wp_chariot logo" width="500"/>
 </p>
 
+# wp_chariot
+
 Spin up idempotent Wordpress dev envs with one click. Sync your changes both ways conveniently. Only SSH required on your server, and only DDEV and Python required on your local machine.
+ **PRE-RELEASE: Don't use on important stuff until it gets tested by more people. But syncing to local (from-remote) should be pretty safe, though.**
 
 ## The Problem wp_chariot Solves: Your Time Is Valuable
 
@@ -106,6 +107,7 @@ protected_files:
   - "wp-config-ddev.php"
   - ".gitignore"
   - ".ddev/"
+```
 
 #### Site Configuration (sites.yaml)
 
