@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="wp_chariot logo" width="500"/>
+  <img src="docs/images/logo.png" alt="wp_chariot logo" width="500"/>
 </p>
 
 # wp_chariot
