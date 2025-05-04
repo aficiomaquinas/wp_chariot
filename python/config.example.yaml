@@ -50,16 +50,12 @@ exclusions:
   # Debug y desarrollo
   debug-logs: "wp-content/debug.log*"
 
-  # Archivos de parches y copias de seguridad
-  backup_files: "**/*.bak"
-
 # Archivos protegidos por defecto
 protected_files:
   - "wp-config.php"
   - "wp-config-ddev.php"
   - ".gitignore"
   - ".ddev/"
-  - "**/*.bak"
 
 # -------------------------------------------------------------------------
 # EJEMPLO DE CONFIGURACIÓN DE SITIO (para sites.yaml)
