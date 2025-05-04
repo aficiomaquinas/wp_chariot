@@ -114,6 +114,9 @@ def configure_media_path(
                     )
                     if start_process.returncode == 0:
                         print("✅ DDEV iniciado correctamente")
+                        # Añadir pausa para asegurar que DDEV esté completamente listo
+                        print("⏳ Esperando 5 segundos para asegurar que DDEV esté completamente iniciado...")
+                        time.sleep(5)
                     else:
                         print(f"⚠️ No se pudo iniciar DDEV: {start_process.stderr}")
                         print("   Continuando de todos modos, pero pueden producirse errores...")
@@ -173,6 +176,10 @@ def configure_media_path(
             debug_cmd = f"ssh {remote_host} 'cd {remote_path} && wp plugin install {MEDIA_PLUGIN}'"
         print(f"🔍 Comando a ejecutar: {debug_cmd}")
         
+        # Añadir pausa para asegurar que WordPress esté listo para instalar plugins
+        print("⏳ Asegurando que WordPress esté completamente listo...")
+        time.sleep(3)
+        
         install_result = install_plugin(
             MEDIA_PLUGIN, 
             local_path, 
@@ -193,6 +200,10 @@ def configure_media_path(
             else:
                 debug_cmd = f"ssh {remote_host} 'cd {remote_path} && wp plugin install {MEDIA_PLUGIN_URL}'"
             print(f"🔍 Comando a ejecutar: {debug_cmd}")
+            
+            # Pausa adicional antes del segundo intento
+            print("⏳ Esperando 5 segundos antes de volver a intentar...")
+            time.sleep(5)
             
             # Intentar instalar desde URL
             install_result = install_plugin(
@@ -225,6 +236,10 @@ def configure_media_path(
         else:
             print(f"✅ Plugin '{MEDIA_PLUGIN}' instalado correctamente")
     
+    # Pausa antes de activar el plugin
+    print("⏳ Esperando 2 segundos antes de activar el plugin...")
+    time.sleep(2)
+    
     # 2. Activar el plugin
     print(f"🔌 Activando plugin '{MEDIA_PLUGIN}'...")
     # Intentar activar hasta 3 veces con pequeñas pausas
@@ -248,7 +263,9 @@ def configure_media_path(
         else:
             if attempt < 2:  # No mostrar en último intento
                 print(f"⚠️ Intento {attempt+1}/3 fallido. Reintentando...")
-                time.sleep(2)  # Esperar un poco antes de reintentar
+                # Aumentar la pausa entre intentos
+                print(f"⏳ Esperando {(attempt+1)*3} segundos antes del siguiente intento...")
+                time.sleep((attempt+1) * 3)
     
     if not activate_success:
         print(f"⚠️ No se pudo activar el plugin '{MEDIA_PLUGIN}'. Continuando de todos modos...")

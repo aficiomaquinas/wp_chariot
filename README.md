@@ -234,6 +234,58 @@ In essence, these tools allow developers to focus on creating real value for the
 - **Centralized configuration** through YAML files with environment support
 - **Intuitive command-line interface** with commands and subcommands
 
+## Patch System and Synchronization
+
+### Patch Files and Backups (.bak)
+
+When applying patches to third-party plugins or themes, the system:
+
+1. Creates backups (files with .bak extension) of the original files
+2. Saves information about patches in a lock file (patches-{sitename}.lock.json)
+3. Allows applying and reverting patches safely
+
+**Important:** Backup files (.bak) are configured to be excluded from the remote → local synchronization to prevent losing local patches. This is configured with the following exclusion in sites.yaml:
+
+```yaml
+exclusions:
+  # Patch and backup files
+  backup_files: "**/*.bak"
+```
+
+### wp-original-media-path Plugin
+
+The wp-original-media-path plugin is used to configure media URLs in WordPress. To avoid issues with this plugin:
+
+1. The plugin has been added to the protected files in sites.yaml:
+   ```yaml
+   protected_files:
+     - "wp-content/plugins/wp-original-media-path/"
+   ```
+
+2. Pauses have been added in the installation/activation process to avoid race conditions in DDEV:
+   - Pause after starting DDEV
+   - Pause before installing the plugin
+   - Pause between installation attempts
+   - Pause before activating the plugin
+
+### Recommended Workflow for Patches
+
+```bash
+# 1. Register a file to patch
+python cli.py patch --add wp-content/plugins/woocommerce/templates/checkout.php --description "Fixes issue X"
+
+# 2. Edit the file locally and test the changes
+
+# 3. Verify the patch status
+python cli.py patch --list
+
+# 4. Apply the patch to the remote server
+python cli.py patch-commit
+
+# 5. If necessary, revert the patch
+python cli.py rollback wp-content/plugins/woocommerce/templates/checkout.php
+```
+
 ## Local dev env requirements
 
 - UNIX based OS (Linux/MacOs) with rsync installed (usually comes installed by default)
@@ -650,123 +702,80 @@ media:
   path: "/absolute/path/to/uploads"  # Physical path (only with expert_mode: true)
 ```
 
-## Patch System
-
-The patch system allows maintaining modifications to third-party plugins and themes in an organized and traceable manner:
-
-### Operation
-
-1. **Patch Registry**: Patches are registered in a `patches.lock.json` file
-2. **Checksum Verification**: Checksums are compared to detect changes in files
-3. **Automatic Backup**: Backups are created before applying patches
-4. **Traceability**: Records who applied each patch and when
-
-### Patch States
-
-The system can display different states for each patch:
-
-- **⏳ Pending**: Registered but not applied
-- **✅ Applied**: Correctly applied and current
-- **⚠️ Orphaned**: The local file has changed since it was registered
-- **🔄 Obsolete**: Patch applied but local file modified afterward
-- **❌ Misaligned**: Applied but remote file has been modified
-- **📅 Expired**: Obsolete patch because the remote version has changed
-
-### Patch System Philosophy
-
-The patch system addresses a fundamental problem in the WordPress ecosystem: the need to modify third-party code while maintaining the integrity of the update cycle.
-
-#### Why Patches Instead of Complete Forks?
-
-While some expensive commercial solutions offer "atomic" environments with fully versioned repositories (such as Pantheon or RunCloud Enterprise), this approach:
-
-1. **Respects Original Versioning**: The code is already versioned by its authors on WordPress.org. Creating a parallel complete versioning system is redundant and inefficient.
-
-2. **Maintains Shared Responsibility**: A patch by definition acknowledges that we are modifying something that is not ours, but assuming responsibility for that modification.
-
-3. **Facilitates Updates**: By maintaining a clear record of specific modifications, it is easier to determine if a patch is still necessary after an update.
-
-4. **Reduces Operational Complexity**: Managing a separate repository for each modified plugin generates unnecessary complexity in the workflow.
-
-This simple but effective approach helps keep WordPress secure and functional without sacrificing customization capability or incurring high costs for commercial solutions that essentially do the same thing in a more complex way.
-
-> 💡 **Note:** In the future, it could be integrated with integrity verification systems (Malcare, Wordfence, Jetpack) of popular plugins to handle exceptions specific to patched versions, without affecting verification in future versions when the author updates the code.
-
-## Security Features
-
-1. **Production Environment Protection**
-   - If `production_safety` is enabled, it runs in simulation mode
-   - Requires explicit confirmation for critical operations
-
-2. **File Protection**
-   - System to identify and protect critical files
-   - Requests confirmation before overwriting important files
-
-3. **Automatic Backups**
-   - Creation of backups before destructive operations
-   - Backups with unique names based on timestamps
-
-4. **Checksum Verification**
-   - Detection of changes through MD5 checksums
-   - Avoids applying patches to modified files
-
 ## Development and Refactoring Plan
 
-The wp_chariot codebase is undergoing continuous improvement to enhance maintainability and reduce technical debt while preserving its functionality and compatibility.
+The wp_chariot codebase requires ongoing refactoring to improve maintainability and reduce technical debt. The following issues have been identified and need to be addressed:
 
-### Current Structure and Identified Issues
+### Current Issues and Refactoring Tasks
 
-#### Project Structure
-```
-wp_chariot/
-├── python/
-    ├── cli.py                    # CLI entry point (714 lines)
-    ├── commands/                 # Available commands
-    │   ├── patch.py              # Patch application (1410 lines)
-    │   ├── database.py           # Database synchronization (743 lines)
-    │   ├── sync.py               # File synchronization (686 lines)
-    │   ├── media.py              # Media path management (442 lines)
-    │   ├── diff.py               # Show differences
-    │   ├── patch_cli.py          # Patch CLI utilities
-    │   ├── wp_cli.py             # WP CLI command utilities
-    │   └── __init__.py
-    ├── sync/                     # Synchronization modules
-    │   ├── files.py              # File synchronization
-    │   └── __init__.py
-    ├── utils/                    # Shared utilities
-    │   ├── ssh.py                # SSH operations (374 lines)
-    │   ├── wp_cli.py             # WP-CLI operations (622 lines)
-    │   ├── filesystem.py         # Filesystem operations
-    │   └── __init__.py
-    ├── config_yaml.py            # YAML configuration mgmt (857 lines)
-    ├── config.py                 # Configuration system
-    ├── setup.py                  # Installation configuration
-    ├── __init__.py               # Package initialization
-    └── requirements.txt          # Dependencies
-```
+1. **Circular Dependencies**
+   - `config_yaml.py` and `utils/filesystem.py` have a circular dependency:
+     - `utils/filesystem.py` has a `create_backup()` function that uses a `config` parameter and calls `get_protected_files()`
+     - Multiple modules import both, creating tight coupling
+   - **Proposed Solution**:
+     - Refactor `create_backup()` to accept a list of protected files instead of a config object?
+     - Create a dedicated configuration interface or module that doesn't depend on filesystem utilities
+     - Use dependency injection more explicitly throughout the codebase
 
-#### Identified Issues
+2. **Large Files**
+   - Several files exceed 500 lines, making maintenance difficult:
+     - `commands/patch.py` (1410 lines)
+     - `config_yaml.py` (857 lines)
+     - `commands/database.py` (743 lines)
+     - `cli.py` (714 lines)
+     - `commands/sync.py` (686 lines)
+     - `utils/wp_cli.py` (622 lines)
+   - **Proposed Solution**:
+     - Split large files into smaller, more focused modules
+     - Extract reusable logic into utility classes
+     - Create specialized classes instead of large procedural modules
 
-1. **Large Files**: Several files exceed 500 lines, making maintenance difficult
-   - `commands/patch.py` (1410 lines)
-   - `config_yaml.py` (857 lines)
-   - `commands/database.py` (743 lines)
-   - `cli.py` (714 lines)
-   - `commands/sync.py` (686 lines)
-   - `utils/wp_cli.py` (622 lines)
-
-2. **Circular Dependencies**: Between configuration and utilities
-   - `config_yaml.py` imports from `utils/filesystem.py`
-   - Multiple modules import from both
-
-3. **Duplicated Code**:
+3. **Duplicated Code**
    - SSH/DDEV execution logic duplicated across files
    - Similar command execution patterns repeated in many places
    - WP-CLI command execution contains significant duplication
+   - **Proposed Solution**:
+     - Create dedicated command execution factories
+     - Implement common patterns as reusable utilities
+     - Use composition instead of copying code
 
-4. **Configuration Management**:
+4. **Configuration Management**
    - Default values defined in utility modules instead of configuration
    - `get_protected_files()` and `get_default_exclusions()` should be part of configuration
+   - **Proposed Solution**:
+     - Centralize all configuration-related logic
+     - Create a clean separation between configuration and utilities
+     - Implement proper configuration interfaces
+
+### Implementation Plan
+
+1. **Phase 1: Dependency Resolution**
+   - Resolve circular dependencies between configuration and filesystem utilities
+   - Create proper abstractions for command execution
+   - Implement consistent error handling
+
+2. **Phase 2: Code Organization**
+   - Split large files into smaller, more focused modules
+   - Extract reusable logic into utility classes
+   - Implement proper separation of concerns
+
+3. **Phase 3: Configuration Redesign**
+   - Redesign configuration management
+   - Create better interfaces for accessing configuration
+   - Implement proper validation for configuration values
+
+4. **Phase 4: Testing**
+   - Add unit tests for critical functionality
+   - Implement integration tests for command execution
+   - Create end-to-end tests for common workflows
+
+### Benefits of Refactoring
+
+- **Improved Maintainability**: Smaller, more focused files are easier to understand and modify
+- **Better Testability**: Clean interfaces allow for better unit testing
+- **Reduced Complexity**: Clear separation of concerns simplifies the codebase
+- **Enhanced Reliability**: Proper error handling and validation improve stability
+- **Easier Onboarding**: Well-organized code is easier for new contributors to understand
 
 ## License
 
