@@ -261,7 +261,7 @@ class PatchManager:
             if ssh and ssh.client:
                 ssh.disconnect()
 
-    def check_safety(self, force_dry_run: bool = False) -> bool:
+    def check_safety(self, force_dry_run: bool = False) -> Optional[bool]:
         """
         Verifica las medidas de seguridad para proteger entornos de producción
         
@@ -269,11 +269,11 @@ class PatchManager:
             force_dry_run: Si es True, siempre ejecuta en modo simulación
             
         Returns:
-            bool: True si es seguro proceder, False si se debe abortar
+            Optional[bool]: True si es seguro proceder, False si se debe abortar, None si forzar dry-run
         """
         if force_dry_run:
             print("\n⚠️ ATENCIÓN: Seguridad forzada. Ejecutando en modo simulación.")
-            return False
+            return None
             
         if self.production_safety:
             print("\n⚠️ ATENCIÓN: Protección de producción activada en la configuración.")
@@ -452,17 +452,14 @@ class PatchManager:
             print("   Puedes registrarlo con el comando 'patch --add'")
             return False
         
-        # Verificar seguridad y posiblemente forzar dry-run
-        safety_check = self.check_safety(force_dry_run=True)
-        if safety_check is None:  # Forzar dry-run por seguridad
-            if not dry_run:
+        # Verificar seguridad solo si production_safety está habilitado
+        if self.production_safety and not dry_run:
+            safety_check = self.check_safety(force_dry_run=False)
+            if safety_check is None:  # Forzar dry-run por seguridad
                 print("⚠️ Forzando modo dry-run debido a configuración de seguridad")
-            dry_run = True
-        elif not safety_check:  # Abortar si no es seguro y no se fuerza dry-run
-            return False
-            
-        # Obtener información del parche
-        patch_info = self.lock_data["patches"][file_path]
+                dry_run = True
+            elif not safety_check:  # Abortar si no es seguro y no se fuerza dry-run
+                return False
         
         # Verificar archivo local
         local_file = self.local_path / file_path
@@ -477,6 +474,7 @@ class PatchManager:
             return False
             
         # Verificar si el archivo local ha cambiado desde que se registró el parche
+        patch_info = self.lock_data["patches"][file_path]
         registered_checksum = patch_info.get("local_checksum", "")
         if local_checksum != registered_checksum and not force:
             print(f"❌ Error: El archivo local ha cambiado desde que se registró el parche")
@@ -816,12 +814,14 @@ class PatchManager:
         print(f"   Destino: {self.remote_host}:{self.remote_path}")
         print("")
         
-        # Verificar seguridad y posiblemente forzar dry-run
-        safety_check = self.check_safety(force_dry_run=True)
-        if safety_check is None:  # Forzar dry-run por seguridad
-            dry_run = True
-        elif not safety_check:  # Abortar si no es seguro y no se fuerza dry-run
-            return False
+        # Verificar seguridad solo si production_safety está habilitado
+        if self.production_safety and not dry_run:
+            safety_check = self.check_safety(force_dry_run=False)
+            if safety_check is None:  # Forzar dry-run por seguridad
+                print("⚠️ Forzando modo dry-run debido a configuración de seguridad")
+                dry_run = True
+            elif not safety_check:  # Abortar si no es seguro y no se fuerza dry-run
+                return False
         
         # Verificar conexión
         if not self.check_remote_connection():

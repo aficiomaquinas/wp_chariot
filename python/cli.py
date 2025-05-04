@@ -261,7 +261,7 @@ def patch_commit_command(file_path, dry_run, force, verbose, site):
         sys.exit(1)
     
     # Solicitar confirmación explícita para aplicar parches
-    if not dry_run:
+    if not dry_run and not force:
         if file_path:
             message = f"⚠️ ¿Estás seguro de aplicar el parche a '{file_path}'? Esta acción modificará archivos en el servidor."
         else:

@@ -466,7 +466,22 @@ class YAMLConfig:
         for key, value in source.items():
             # Si ambos valores son diccionarios, actualizar recursivamente
             if key in target and isinstance(target[key], dict) and isinstance(value, dict):
-                self._update_dict_recursive(target[key], value)
+                # Caso especial para la sección de seguridad, asegurando que la configuración del sitio tenga precedencia
+                if key == 'security' and 'production_safety' in value:
+                    # Preservar valor de production_safety directamente del sitio antes de hacer merge recursivo
+                    production_safety_value = value.get('production_safety')
+                    
+                    # Hacer merge recursivo normal
+                    self._update_dict_recursive(target[key], value)
+                    
+                    # Aplicar el valor del sitio con precedencia
+                    target[key]['production_safety'] = production_safety_value
+                    
+                    if self.verbose:
+                        print(f"Configuración de seguridad actualizada: production_safety={production_safety_value}")
+                else:
+                    # Para otras secciones, hacer merge recursivo normal
+                    self._update_dict_recursive(target[key], value)
             else:
                 # En caso contrario, sobrescribir el valor
                 target[key] = copy.deepcopy(value)
