@@ -83,6 +83,7 @@ For detailed installation instructions, see the [Installation Guide](docs/instal
 Comprehensive documentation is available in the `docs/` directory:
 
 - [Installation Guide](docs/installation.md) - Detailed installation instructions
+- [Configuration Files](docs/configuration-files.md) - Guide to configuration files structure and options
 - [Command Reference](docs/commands-reference.md) - Complete list of all available commands
 - [Workflow Guide](docs/workflow.md) - Detailed workflow explanation with diagrams
 - [FAQ](docs/faq.md) - Frequently asked questions
