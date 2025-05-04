@@ -813,14 +813,19 @@ Key improvements in this phase:
 
 #### Phase 2: Breaking Down Large Files
 
-##### 2.1 Split `commands/patch.py` (1410 lines)
-- Create new module: `commands/patch_utils.py` 
-- Extract utility functions:
-  - Patch detection functions
-  - Checksum calculation
-  - File comparison logic
-- Keep main command functionality in the original file
-- Update imports to maintain compatibility
+##### 2.1 Split `commands/patch.py` (1410 lines) ✅
+- ✅ Creado nuevo módulo: `commands/patch_utils.py` 
+- ✅ Extraídas funciones de utilidad:
+  - ✅ Funciones de detección de estado de parches (`determine_patch_status`)
+  - ✅ Cálculo de checksums (`calculate_checksum`)
+  - ✅ Comparación de archivos (`show_file_diff`)
+  - ✅ Funciones para obtener versiones de archivos locales y remotos
+  - ✅ Manejo de archivos lock para parches
+- ✅ Preservada la funcionalidad principal en el archivo original
+- ✅ Actualizadas importaciones para mantener compatibilidad
+- ✅ Aplicado principio "fail fast" en las nuevas funciones
+
+Esta refactorización reduce el tamaño y complejidad del archivo original, mejora la mantenibilidad y reutilización de código, y sigue los principios de responsabilidad única y diseño.
 
 ##### 2.2 Extract Helper Functions from `config_yaml.py` (857 lines)
 - Create `config_utils.py` for helper functions
@@ -869,3 +874,51 @@ Key improvements in this phase:
 4. **Focus on Quick Wins**: Initial phases focus on high-impact, low-risk changes
 
 This refactoring plan aims to improve code maintainability and reduce technical debt while ensuring the codebase remains stable and compatible with existing workflows.
+
+## Convención de Commits
+
+Para mantener una estructura clara y consistente en el historial de commits, este proyecto sigue la convención de [Conventional Commits](https://www.conventionalcommits.org/) con la siguiente estructura:
+
+```
+<tipo>(<ámbito opcional>): <descripción>
+
+[cuerpo opcional]
+
+[notas al pie opcionales]
+```
+
+### Tipos de Commits
+
+- `feat`: Nuevas características o funcionalidades
+- `fix`: Corrección de errores
+- `refactor`: Cambios en el código que no agregan funcionalidad ni corrigen errores
+- `docs`: Cambios en la documentación
+- `style`: Cambios que no afectan el significado del código (espacios, formato, etc.)
+- `test`: Adición o corrección de pruebas
+- `chore`: Tareas de mantenimiento, actualizaciones de dependencias, etc.
+- `perf`: Cambios para mejorar el rendimiento
+
+### Ámbitos Recomendados
+
+- `core`: Funcionalidad central
+- `config`: Sistema de configuración
+- `patches`: Sistema de parches
+- `sync`: Sincronización de archivos
+- `db`: Gestión de bases de datos
+- `media`: Gestión de archivos multimedia
+- `wp-cli`: Interacción con WP-CLI
+
+### Ejemplos
+
+```
+feat(patches): implementar detección automática de parches huérfanos
+fix(db): corregir error en importación de bases de datos grandes
+docs: actualizar instrucciones de instalación
+refactor(sync): extraer lógica de sincronización a módulo separado
+```
+
+Esta convención facilita:
+1. La generación automática de changelog
+2. La navegación clara del historial de commits
+3. La comprensión rápida de la intención de cada cambio
+4. La aplicación de filtros y búsquedas en el historial de git

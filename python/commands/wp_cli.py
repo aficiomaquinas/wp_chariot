@@ -32,7 +32,20 @@ def flush_wp_cache(args: Optional[List[str]] = None) -> int:
     local_path = Path(get_nested(config, "ssh", "local_path"))
     remote_host = get_nested(config, "ssh", "remote_host")
     remote_path = get_nested(config, "ssh", "remote_path")
-    ddev_wp_path = get_nested(config, "ddev", "webroot")
+    
+    # Exigir explícitamente ambos parámetros (fail fast)
+    base_path = get_nested(config, "ddev", "base_path")
+    docroot = get_nested(config, "ddev", "docroot")
+    
+    if not base_path or not docroot:
+        print("❌ Error: Configuración DDEV incompleta en sites.yaml")
+        print("   Se requieren ambos parámetros:")
+        print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
+        print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
+        return 1
+        
+    # Construir la ruta WP completa
+    ddev_wp_path = f"{base_path}/{docroot}"
     
     # Limpiar caché
     success = flush_cache(
@@ -69,7 +82,20 @@ def update_wp_option(args: Optional[List[str]] = None) -> int:
     local_path = Path(get_nested(config, "ssh", "local_path"))
     remote_host = get_nested(config, "ssh", "remote_host")
     remote_path = get_nested(config, "ssh", "remote_path")
-    ddev_wp_path = get_nested(config, "ddev", "webroot")
+    
+    # Exigir explícitamente ambos parámetros (fail fast)
+    base_path = get_nested(config, "ddev", "base_path")
+    docroot = get_nested(config, "ddev", "docroot")
+    
+    if not base_path or not docroot:
+        print("❌ Error: Configuración DDEV incompleta en sites.yaml")
+        print("   Se requieren ambos parámetros:")
+        print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
+        print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
+        return 1
+        
+    # Construir la ruta WP completa
+    ddev_wp_path = f"{base_path}/{docroot}"
     
     # Actualizar opción
     success = update_option(
@@ -107,7 +133,20 @@ def update_wp_media_path(args: Optional[List[str]] = None) -> int:
     local_path = Path(get_nested(config, "ssh", "local_path"))
     remote_host = get_nested(config, "ssh", "remote_host")
     remote_path = get_nested(config, "ssh", "remote_path")
-    ddev_wp_path = get_nested(config, "ddev", "webroot")
+    
+    # Exigir explícitamente ambos parámetros (fail fast)
+    base_path = get_nested(config, "ddev", "base_path")
+    docroot = get_nested(config, "ddev", "docroot")
+    
+    if not base_path or not docroot:
+        print("❌ Error: Configuración DDEV incompleta en sites.yaml")
+        print("   Se requieren ambos parámetros:")
+        print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
+        print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
+        return 1
+        
+    # Construir la ruta WP completa
+    ddev_wp_path = f"{base_path}/{docroot}"
     
     # Actualizar ruta de medios
     success = update_media_path(

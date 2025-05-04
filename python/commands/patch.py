@@ -21,23 +21,25 @@ from utils.ssh import SSHClient
 from utils.filesystem import ensure_dir_exists, create_backup
 from utils.wp_cli import get_item_version_from_path
 
-# Estados de parches
-PATCH_STATUS_PENDING = "PENDING"        # Registrado, no aplicado, checksum vigente
-PATCH_STATUS_APPLIED = "APPLIED"        # Aplicado y vigente
-PATCH_STATUS_ORPHANED = "ORPHANED"      # Checksum local no coincide, parche huérfano
-PATCH_STATUS_OBSOLETED = "OBSOLETED"    # Parche aplicado pero local modificado después
-PATCH_STATUS_MISMATCHED = "MISMATCHED"  # Aplicado pero versión remota diferente
-PATCH_STATUS_STALE = "STALE"            # Parche antiguo, ya no relevante
-
-# Estado legible para el usuario
-PATCH_STATUS_LABELS = {
-    PATCH_STATUS_PENDING: "⏳ Pendiente",
-    PATCH_STATUS_APPLIED: "✅ Aplicado",
-    PATCH_STATUS_ORPHANED: "⚠️ Huérfano",
-    PATCH_STATUS_OBSOLETED: "🔄 Obsoleto",
-    PATCH_STATUS_MISMATCHED: "❌ Desajustado",
-    PATCH_STATUS_STALE: "📅 Caduco"
-}
+# Importar funciones y constantes desde patch_utils
+from .patch_utils import (
+    calculate_checksum, 
+    get_remote_file_checksum,
+    get_remote_file_version,
+    get_local_file_version,
+    show_file_diff,
+    determine_patch_status,
+    get_site_specific_lock_file,
+    load_lock_file,
+    save_lock_file,
+    PATCH_STATUS_PENDING,
+    PATCH_STATUS_APPLIED,
+    PATCH_STATUS_ORPHANED,
+    PATCH_STATUS_OBSOLETED,
+    PATCH_STATUS_MISMATCHED,
+    PATCH_STATUS_STALE,
+    PATCH_STATUS_LABELS
+)
 
 class PatchManager:
     """
@@ -56,130 +58,52 @@ class PatchManager:
         """
         self.config = get_yaml_config(verbose=False)
         
-        # Cargar configuración
-        self.remote_host = self.config.get("ssh", "remote_host")
-        self.remote_path = self.config.get("ssh", "remote_path")
-        self.local_path = Path(self.config.get("ssh", "local_path"))
-        
-        # Asegurarse de que las rutas remotas terminen con /
-        if not self.remote_path.endswith("/"):
-            self.remote_path += "/"
-        
-        # Cargar configuración de seguridad
-        self.production_safety = get_nested(self.config, "security", "production_safety") == "enabled"
-        
-        # Determinar el sitio actual para el archivo lock específico por sitio
-        self.current_site = self.config.current_site
-        
-        # Generar el nombre del archivo lock: patches-sitename.lock.json si hay un sitio actual,
-        # o patches.lock.json si no hay sitio o es el predeterminado
-        lock_filename = "patches.lock.json"
-        if self.current_site:
-            lock_filename = f"patches-{self.current_site}.lock.json"
-        
-        # Crear la ruta al archivo lock (ahora solo dos niveles arriba con la estructura aplanada)
-        self.lock_file = Path(__file__).resolve().parent.parent / lock_filename
-        
-        # Cargar archivo lock
-        self.lock_data = self.load_lock_file()
-        
-        # Cargar archivos protegidos
-        self.protected_files = self.config.get_protected_files()
-        
-        # Cargar límite de memoria para WP-CLI
-        self.wp_memory_limit = self.config.get_wp_memory_limit()
-        
-        # Inicializar lista de parches
-        self.patches = []
-        
-    def load_lock_file(self) -> Dict:
-        """
-        Carga el archivo lock con información de parches
-        
-        Returns:
-            Dict: Datos del archivo lock
-        """
-        # Crear estructura inicial del archivo lock
-        lock_data = {
-            "patches": {},
-            "last_updated": datetime.datetime.now().isoformat()
-        }
-        
-        # Verificar si existe el archivo específico del sitio
-        if self.lock_file.exists():
-            try:
-                with open(self.lock_file, 'r') as f:
-                    lock_data = json.load(f)
-                    
-                print(f"✅ Archivo lock '{self.lock_file.name}' cargado: {len(lock_data.get('patches', {}))} parches registrados")
-                return lock_data
-            except Exception as e:
-                print(f"⚠️ Error al cargar archivo lock específico del sitio: {str(e)}")
-                print("   Se creará un nuevo archivo lock para este sitio.")
-        elif self.current_site:
-            # Si no existe el archivo específico del sitio pero sí el genérico,
-            # intentar cargar el archivo genérico y usarlo como base
-            generic_lock_file = Path(__file__).resolve().parent.parent / "patches.lock.json"
-            if generic_lock_file.exists():
-                try:
-                    with open(generic_lock_file, 'r') as f:
-                        lock_data = json.load(f)
-                        
-                    print(f"ℹ️ Usando archivo lock genérico como base: {len(lock_data.get('patches', {}))} parches encontrados")
-                    print(f"   Se guardará como '{self.lock_file.name}' para este sitio.")
-                    # No guardamos inmediatamente el archivo específico para evitar duplicar datos innecesariamente
-                except Exception as e:
-                    print(f"⚠️ Error al cargar archivo lock genérico: {str(e)}")
-        else:
-            print(f"ℹ️ No se encontró archivo lock. Se creará uno nuevo.")
+        # Cargar configuración siguiendo principio "fail fast"
+        try:
+            # Obtener valores de SSH requeridos
+            if "ssh" not in self.config.config:
+                raise ValueError("Falta sección 'ssh' en la configuración")
             
-        return lock_data
-    
+            self.remote_host = self.config.get_strict("ssh", "remote_host")
+            self.remote_path = self.config.get_strict("ssh", "remote_path")
+            self.local_path = Path(self.config.get_strict("ssh", "local_path"))
+            
+            # Asegurarse de que las rutas remotas terminen con /
+            if not self.remote_path.endswith("/"):
+                self.remote_path += "/"
+            
+            # Cargar configuración de seguridad
+            self.production_safety = get_nested(self.config, "security", "production_safety") == "enabled"
+            
+            # Determinar el sitio actual para el archivo lock específico por sitio
+            self.current_site = self.config.current_site
+            
+            # Generar el nombre del archivo lock usando la función de utility
+            self.lock_file = get_site_specific_lock_file(self.current_site)
+            
+            # Cargar archivo lock
+            self.lock_data = load_lock_file(self.lock_file)
+            
+            # Cargar archivos protegidos
+            self.protected_files = self.config.get_protected_files()
+            
+            # Cargar límite de memoria para WP-CLI - sin valores por defecto (fail fast)
+            self.wp_memory_limit = self.config.get_wp_memory_limit()
+            
+            # Inicializar lista de parches
+            self.patches = []
+            
+        except ValueError as e:
+            print(f"❌ Error de configuración: {str(e)}")
+            print("   El sistema no puede continuar sin la configuración requerida.")
+            raise
+        
     def save_lock_file(self):
         """
         Guarda los datos del archivo lock
         """
-        try:
-            # Actualizar fecha de modificación
-            self.lock_data["last_updated"] = datetime.datetime.now().isoformat()
-            
-            # Asegurarnos de que el directorio padre existe
-            self.lock_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            with open(self.lock_file, 'w') as f:
-                json.dump(self.lock_data, f, indent=2)
-                
-            # Mostrar información sobre el sitio si es un archivo específico
-            if self.current_site:
-                print(f"✅ Archivo lock para el sitio '{self.current_site}' actualizado: {self.lock_file}")
-            else:
-                print(f"✅ Archivo lock general actualizado: {self.lock_file}")
-        except Exception as e:
-            print(f"⚠️ Error al guardar archivo lock: {str(e)}")
+        save_lock_file(self.lock_file, self.lock_data, self.current_site)
     
-    def calculate_checksum(self, file_path: Path) -> str:
-        """
-        Calcula el checksum MD5 de un archivo
-        
-        Args:
-            file_path: Ruta al archivo
-            
-        Returns:
-            str: Checksum MD5 del archivo
-        """
-        if not file_path.exists():
-            return ""
-            
-        hash_md5 = hashlib.md5()
-        try:
-            with open(file_path, "rb") as f:
-                for chunk in iter(lambda: f.read(4096), b""):
-                    hash_md5.update(chunk)
-            return hash_md5.hexdigest()
-        except Exception as e:
-            print(f"⚠️ Error al calcular checksum: {str(e)}")
-            return ""
-        
     def check_remote_connection(self) -> bool:
         """
         Verifica la conexión con el servidor remoto
@@ -198,16 +122,30 @@ class PatchManager:
             code, stdout, stderr = ssh.execute(cmd)
             
             if code != 0:
-                print(f"❌ Error al verificar ruta remota: {stderr}")
+                print(f"❌ No se pudo acceder al servidor remoto: {self.remote_host}")
+                if stderr:
+                    print(f"   Error: {stderr}")
                 return False
                 
-            if "OK" not in stdout:
+            if "NOT_FOUND" in stdout:
                 print(f"❌ La ruta remota no existe: {self.remote_path}")
                 return False
                 
-            print(f"✅ Conexión verificada con éxito")
+            print(f"✅ Conexión exitosa con el servidor remoto")
             return True
+    
+    def calculate_checksum(self, file_path: Path) -> str:
+        """
+        Calcula el checksum MD5 de un archivo
+        
+        Args:
+            file_path: Ruta al archivo
             
+        Returns:
+            str: Checksum MD5 del archivo
+        """
+        return calculate_checksum(file_path)
+        
     def list_patches(self, verbose: bool = False) -> None:
         """
         Muestra la lista de parches registrados con estado detallado
@@ -260,214 +198,135 @@ class PatchManager:
                 local_version = info.get("local_version", "Desconocida")
                 remote_version = info.get("remote_version", "Desconocida")
                 
-                # Obtener estado detallado si hay conexión SSH
-                status_details = {"messages": []}
-                if connected and ssh and ssh.client:
+                # Determinar estado del parche si estamos conectados
+                status = "Desconocido"
+                status_code = PATCH_STATUS_PENDING  # Por defecto
+                
+                if connected and ssh:
                     try:
                         status_code, status_details = self.get_patch_status(file_path, ssh)
-                        status_label = PATCH_STATUS_LABELS.get(status_code, "⏳ Registrado")
-                        
-                        # Capturar errores de memoria PHP solo una vez
-                        error_msg = status_details.get("error", "")
-                        if "memory size" in error_msg and not php_memory_error_shown:
-                            print(f"⚠️ Error de memoria PHP al consultar información. Algunos detalles pueden no mostrarse.")
-                            php_memory_error_shown = True
+                        status = PATCH_STATUS_LABELS.get(status_code, "Estado desconocido")
                     except Exception as e:
-                        status_code = PATCH_STATUS_APPLIED if applied_date else PATCH_STATUS_PENDING
-                        status_label = PATCH_STATUS_LABELS.get(status_code, "⏳ Registrado")
-                        status_details["messages"].append(f"Error al obtener estado: {str(e)}")
+                        # Capturar errores específicos de memoria PHP
+                        if "Fatal error: Allowed memory size" in str(e):
+                            if not php_memory_error_shown:
+                                print(f"⚠️ Error de memoria PHP al obtener algunos estados. Use WP_CLI_PHP_ARGS para aumentar el límite de memoria.")
+                                php_memory_error_shown = True
+                            status = "⚠️ Error de memoria"
+                        else:
+                            status = f"⚠️ Error: {str(e)}"
+                elif connected:
+                    status = "⚠️ No conectado"
                 else:
-                    # Estado básico si no hay conexión
-                    status_code = PATCH_STATUS_APPLIED if applied_date else PATCH_STATUS_PENDING
-                    status_label = PATCH_STATUS_LABELS.get(status_code, "⏳ Registrado")
+                    # Si no estamos conectados, usamos la información local
+                    if applied_date:
+                        status = "✅ Aplicado (sin verificar)"
+                    else:
+                        status = "⏳ Pendiente (sin verificar)"
                 
-                # Mostrar información del parche de forma compacta
-                print(f"  - {file_path}")
-                print(f"    • {item_type}: {plugin_name}")
-                print(f"    • Descripción: {description}")
-                print(f"    • Estado: {status_label} {applied_date and f'({applied_date})' or '(No aplicado)'}")
+                # Formatear fecha si existe
+                formatted_date = ""
+                if applied_date:
+                    try:
+                        # Intentar parsear la fecha
+                        applied_datetime = datetime.datetime.fromisoformat(applied_date)
+                        formatted_date = applied_datetime.strftime("%Y-%m-%d %H:%M:%S")
+                    except:
+                        formatted_date = applied_date
                 
-                # Mostrar versiones en la misma línea para ser más compacto
-                version_info = f"Versión local: {local_version}"
-                if applied_date and remote_version != "Desconocida":
-                    version_info += f" | Versión remota: {remote_version}"
-                print(f"    • {version_info}")
-                print(f"    • Checksum local: {local_checksum}")
+                # Mostrar información del parche
+                print(f"\n📄 {item_type}: {plugin_name}")
+                print(f"   • Archivo: {file_path}")
+                print(f"   • Descripción: {description}")
+                print(f"   • Estado: {status}")
                 
-                # Mostrar mensajes de estado importantes si hay
-                for message in status_details.get("messages", []):
-                    if "Error" in message or "error" in message:
-                        print(f"    • ⚠️ {message}")
+                if verbose:
+                    print(f"   • Versión local: {local_version}")
+                    if connected:
+                        print(f"   • Versión remota: {remote_version}")
+                    print(f"   • MD5 local registrado: {local_checksum}")
+                    
+                    if applied_date:
+                        print(f"   • Aplicado: {formatted_date}")
+                        
+                        # Mostrar usuario que aplicó el parche si está disponible
+                        applied_by = info.get("applied_by", "")
+                        if applied_by:
+                            print(f"   • Aplicado por: {applied_by}")
                 
-                # En modo verbose, mostrar más detalles
-                if verbose and status_details:
-                    if status_details.get("current_local_checksum") and status_details.get("current_local_checksum") != local_checksum:
-                        print(f"    • Checksum local actual: {status_details.get('current_local_checksum')}")
-                    if status_details.get("current_remote_checksum"):
-                        print(f"    • Checksum remoto actual: {status_details.get('current_remote_checksum')}")
-                    if status_details.get("remote_backups"):
-                        print(f"    • Backups encontrados: {len(status_details.get('remote_backups'))}")
-                        for i, backup in enumerate(status_details.get("remote_backups")[:3]):
-                            print(f"      - {os.path.basename(backup)}")
-                        if len(status_details.get("remote_backups")) > 3:
-                            print(f"      ... y {len(status_details.get('remote_backups')) - 3} más")
-                
-                print()
+        except Exception as e:
+            print(f"⚠️ Error al listar parches: {str(e)}")
         finally:
-            # Cerrar la conexión SSH si está abierta
+            # Cerrar la conexión SSH
             if ssh and ssh.client:
                 ssh.disconnect()
-        
+
     def check_safety(self, force_dry_run: bool = False) -> bool:
         """
-        Verifica si se pueden aplicar parches según la configuración de seguridad
+        Verifica las medidas de seguridad para proteger entornos de producción
         
         Args:
-            force_dry_run: Si es True, fuerza modo dry-run en entorno protegido en vez de abortar
+            force_dry_run: Si es True, siempre ejecuta en modo simulación
             
         Returns:
-            bool: True si es seguro continuar, False si no se debe permitir, None si se debe forzar dry-run
+            bool: True si es seguro proceder, False si se debe abortar
         """
+        if force_dry_run:
+            print("\n⚠️ ATENCIÓN: Seguridad forzada. Ejecutando en modo simulación.")
+            return False
+            
         if self.production_safety:
-            if force_dry_run:
-                print("⚠️ ADVERTENCIA: Protección de producción está activada.")
-                print("   Se ejecutará en modo simulación (dry-run) para mostrar qué cambios se harían.")
-                print("   Para aplicar cambios reales, debes desactivar 'production_safety' en la configuración.")
-                return None  # Indica que se debe forzar dry-run
-            else:
-                print("⛔ ERROR: No se pueden aplicar parches con la protección de producción activada.")
-                print("   Esta operación podría sobrescribir código en el servidor de producción.")
-                print("   Para continuar, debes desactivar 'production_safety' en la configuración YAML:")
-                print("   security:")
-                print("     production_safety: disabled")
-                print("")
-                print("   ⚠️ ADVERTENCIA: Solo desactiva esta protección si estás completamente seguro de lo que haces.")
-                print("")
-                print("   Puedes usar --info para ver qué cambios se harían sin aplicarlos.")
+            print("\n⚠️ ATENCIÓN: Protección de producción activada en la configuración.")
+            print("   Esta operación podría afectar un entorno de producción.")
+            print("   Para continuar, desactive la protección en config.yaml o confirme para continuar.")
+            
+            user_input = input("\n¿Está seguro de querer continuar? (s/N): ")
+            
+            if user_input.lower() not in ["s", "si", "sí", "y", "yes"]:
+                print("Operación cancelada por el usuario.")
                 return False
+                
+            print("Protección desactivada temporalmente a petición del usuario.\n")
             
         return True
-    
+        
     def get_remote_file_checksum(self, ssh: SSHClient, remote_file: str) -> str:
         """
-        Obtiene el checksum MD5 de un archivo remoto
+        Obtiene el checksum de un archivo en el servidor remoto
         
         Args:
-            ssh: Conexión SSH activa
-            remote_file: Ruta absoluta al archivo remoto
+            ssh: Cliente SSH conectado
+            remote_file: Ruta al archivo en el servidor remoto
             
         Returns:
-            str: Checksum MD5 del archivo o cadena vacía si hay error
+            str: Checksum MD5 del archivo remoto
         """
-        cmd = f"md5sum \"{remote_file}\" | cut -d' ' -f1"
-        code, stdout, stderr = ssh.execute(cmd)
-        
-        if code != 0 or not stdout.strip():
-            return ""
-            
-        return stdout.strip()
+        return get_remote_file_checksum(ssh, remote_file)
         
     def get_remote_file_version(self, ssh: SSHClient, file_path: str) -> str:
         """
-        Obtiene la versión del plugin o tema en el servidor remoto
+        Obtiene la versión de un plugin o tema desde un archivo en el servidor remoto
         
         Args:
-            ssh: Conexión SSH activa
-            file_path: Ruta relativa al archivo
+            ssh: Cliente SSH conectado
+            file_path: Ruta al archivo
             
         Returns:
-            str: Versión del plugin/tema o cadena vacía si no se puede determinar
+            str: Versión del plugin o tema, o cadena vacía si no se puede determinar
         """
-        try:
-            item_type, slug, _ = get_item_version_from_path(
-                file_path, 
-                self.local_path, 
-                remote=True,
-                remote_host=self.remote_host,
-                remote_path=self.remote_path,
-                memory_limit=self.wp_memory_limit
-            )
-            
-            if not slug:
-                return ""
-                
-            # Usar el WP-CLI remoto para obtener la versión
-            if item_type == "plugin":
-                cmd = f"php -d memory_limit={self.wp_memory_limit} $(which wp) plugin get {slug} --format=json --path={self.remote_path}"
-                code, stdout, stderr = ssh.execute(cmd)
-                
-                if code != 0 or not stdout.strip():
-                    # Si hay error, puede ser por falta de memoria
-                    if "Fatal error: Allowed memory size" in stderr:
-                        print(f"⚠️ Error de memoria al obtener información del plugin: {slug}")
-                        print(f"   Intentando con límite de memoria aumentado...")
-                        
-                        # Intentar con más memoria
-                        cmd = f"php -d memory_limit=1024M $(which wp) plugin get {slug} --format=json --path={self.remote_path}"
-                        code, stdout, stderr = ssh.execute(cmd)
-                        
-                        if code != 0 or not stdout.strip():
-                            return ""
-                    else:
-                        return ""
-                    
-                try:
-                    data = json.loads(stdout)
-                    return data.get("version", "")
-                except:
-                    return ""
-            elif item_type == "theme":
-                cmd = f"php -d memory_limit={self.wp_memory_limit} $(which wp) theme get {slug} --format=json --path={self.remote_path}"
-                code, stdout, stderr = ssh.execute(cmd)
-                
-                if code != 0 or not stdout.strip():
-                    # Si hay error, puede ser por falta de memoria
-                    if "Fatal error: Allowed memory size" in stderr:
-                        print(f"⚠️ Error de memoria al obtener información del tema: {slug}")
-                        print(f"   Intentando con límite de memoria aumentado...")
-                        
-                        # Intentar con más memoria
-                        cmd = f"php -d memory_limit=1024M $(which wp) theme get {slug} --format=json --path={self.remote_path}"
-                        code, stdout, stderr = ssh.execute(cmd)
-                        
-                        if code != 0 or not stdout.strip():
-                            return ""
-                    else:
-                        return ""
-                    
-                try:
-                    data = json.loads(stdout)
-                    return data.get("version", "")
-                except:
-                    return ""
-        except Exception as e:
-            if isinstance(e, Exception) and str(e):
-                print(f"⚠️ Error al obtener versión remota: {str(e)}")
-            return ""
-            
-        return ""
+        return get_remote_file_version(ssh, file_path, self.remote_path, self.wp_memory_limit)
         
     def get_local_file_version(self, file_path: str) -> str:
         """
-        Obtiene la versión del plugin o tema local
+        Obtiene la versión de un plugin o tema desde un archivo local
         
         Args:
             file_path: Ruta relativa al archivo
             
         Returns:
-            str: Versión del plugin/tema o cadena vacía si no se puede determinar
+            str: Versión del plugin o tema, o cadena vacía si no se puede determinar
         """
-        try:
-            _, _, version = get_item_version_from_path(
-                file_path, 
-                self.local_path,
-                memory_limit=self.wp_memory_limit
-            )
-            return version
-        except Exception as e:
-            if isinstance(e, Exception) and str(e):
-                print(f"⚠️ Error al obtener versión local: {str(e)}")
-            return ""
+        return get_local_file_version(file_path, self.local_path)
     
     def add_patch(self, file_path: str, description: str = "") -> bool:
         """
@@ -801,69 +660,14 @@ class PatchManager:
     
     def _show_file_diff(self, local_file: Path, remote_file: str, ssh: Optional[SSHClient] = None) -> None:
         """
-        Muestra las diferencias entre el archivo local y el remoto
+        Muestra las diferencias entre un archivo local y uno remoto
         
         Args:
             local_file: Ruta al archivo local
             remote_file: Ruta al archivo remoto
-            ssh: Conexión SSH activa (opcional)
+            ssh: Cliente SSH conectado (opcional, se crea uno nuevo si no se proporciona)
         """
-        print("   🔍 Verificando diferencias con el servidor...")
-        
-        # Crear un SSH client si no se proporcionó uno
-        close_ssh = False
-        if ssh is None:
-            ssh = SSHClient(self.remote_host)
-            ssh.connect()
-            
-        if not ssh.client:
-            print("   ❌ No se pudo establecer conexión SSH para mostrar diferencias")
-            return
-            
-        # Verificar si el archivo remoto existe
-        cmd_check = f"test -f \"{remote_file}\" && echo \"EXISTS\" || echo \"NOT_EXISTS\""
-        _, stdout, _ = ssh.execute(cmd_check)
-        
-        # Crear directorio temporal
-        temp_dir = tempfile.mkdtemp()
-        remote_temp = Path(temp_dir) / os.path.basename(remote_file)
-        
-        try:
-            # Descargar archivo remoto si existe
-            if "EXISTS" in stdout:
-                if not ssh.download_file(remote_file, remote_temp):
-                    print("   ⚠️ No se pudo descargar el archivo remoto para comparar.")
-                    return
-                    
-                # Comparar archivos
-                with open(local_file, 'r') as local_f, open(remote_temp, 'r') as remote_f:
-                    local_content = local_f.readlines()
-                    remote_content = remote_f.readlines()
-                    
-                diff = list(difflib.unified_diff(
-                    remote_content, local_content, 
-                    fromfile='servidor', tofile='local',
-                    lineterm=''
-                ))
-                
-                if not diff:
-                    print("   ℹ️ No hay diferencias entre versión local y remota.")
-                else:
-                    # Mostrar las diferencias (limitadas)
-                    print("   📊 Diferencias encontradas:")
-                    for line in diff[:30]:
-                        print(f"   {line}")
-                    if len(diff) > 30:
-                        print("   ... (más diferencias)")
-            else:
-                print("   ℹ️ El archivo no existe en el servidor o no se puede leer.")
-        finally:
-            # Limpiar directorio temporal
-            shutil.rmtree(temp_dir)
-            
-            # Ya no intentamos cerrar SSH aquí, ya que la conexión se maneja
-            # automáticamente con el context manager (with) en los métodos que llaman
-            # a esta función, o dentro de SSHClient mismo
+        show_file_diff(local_file, remote_file, ssh)
     
     def rollback_patch(self, file_path: str, dry_run: bool = False) -> bool:
         """
@@ -1085,163 +889,79 @@ class PatchManager:
         
     def get_patch_status(self, file_path: str, ssh: Optional[SSHClient] = None) -> Tuple[str, Dict]:
         """
-        Verifica el estado detallado de un parche
+        Determina el estado de un parche
         
         Args:
             file_path: Ruta relativa al archivo
-            ssh: Conexión SSH activa (opcional)
+            ssh: Cliente SSH conectado (opcional)
             
         Returns:
-            Tuple[str, Dict]: Estado del parche y detalles adicionales
+            Tuple[str, Dict]: Código de estado del parche y detalles
         """
-        # Verificar si el parche existe en el registro
-        if "patches" not in self.lock_data or file_path not in self.lock_data["patches"]:
-            return None, {}
-            
-        patch_info = self.lock_data["patches"][file_path]
-        details = {
-            "description": patch_info.get("description", ""),
-            "local_path": str(self.local_path / file_path),
-            "remote_path": f"{self.remote_path}/{file_path}",
-            "registered_date": patch_info.get("registered_date", ""),
-            "applied_date": patch_info.get("applied_date", ""),
-            "item_type": patch_info.get("item_type", "other"),
-            "item_slug": patch_info.get("item_slug", ""),
-            "local_version": patch_info.get("local_version", ""),
-            "remote_version": patch_info.get("remote_version", ""),
-            "original_checksum": patch_info.get("original_checksum", ""),
-            "patched_checksum": patch_info.get("patched_checksum", ""),
-            "backup_file": patch_info.get("backup_file", ""),
-            "messages": [],
-            "error": ""
-        }
+        patch_info = self.lock_data.get("patches", {}).get(file_path, {})
         
-        # Verificar archivo local
+        if not patch_info:
+            return PATCH_STATUS_PENDING, {"error": "Parche no encontrado", "messages": ["Parche no registrado"]}
+            
+        # Inicializar valores
+        details = {
+            "remote_exists": False,
+            "local_exists": False,
+            "remote_checksum": "",
+            "current_local_checksum": "",
+            "registered_local_checksum": patch_info.get("local_checksum", ""),
+            "current_remote_version": "",
+            "registered_remote_version": patch_info.get("remote_version", ""),
+            "messages": []
+        }
+            
+        # Comprobar archivo local
         local_file = self.local_path / file_path
         local_exists = local_file.exists()
         details["local_exists"] = local_exists
         
+        # Obtener checksum local actual
+        current_local_checksum = ""
         if local_exists:
             current_local_checksum = self.calculate_checksum(local_file)
-            registered_local_checksum = patch_info.get("local_checksum", "")
-            details["current_local_checksum"] = current_local_checksum
-            details["registered_local_checksum"] = registered_local_checksum
+        details["current_local_checksum"] = current_local_checksum
             
-            # Verificar si el archivo local ha cambiado desde que se registró
-            if current_local_checksum != registered_local_checksum:
-                details["messages"].append(f"El archivo local ha cambiado desde que se registró el parche")
-        else:
-            details["messages"].append(f"El archivo local no existe: {local_file}")
-            
-        # Verificar archivo remoto si es posible
-        if ssh is None or not ssh.client:
-            # No hay conexión SSH disponible
-            # Si el parche está marcado como aplicado
-            if patch_info.get("applied_date"):
-                # Si coincide el checksum local con el registrado
-                if local_exists and current_local_checksum == registered_local_checksum:
-                    return PATCH_STATUS_APPLIED, details
-                else:
-                    # El archivo local ha cambiado, parche obsoleto
-                    return PATCH_STATUS_OBSOLETED, details
-            else:
-                # Si coincide el checksum local con el registrado
-                if local_exists and current_local_checksum == registered_local_checksum:
-                    return PATCH_STATUS_PENDING, details
-                else:
-                    # El archivo local ha cambiado, parche huérfano
-                    return PATCH_STATUS_ORPHANED, details
+        # Verificar existencia y checksum del archivo remoto
+        remote_exists = False
+        remote_checksum = ""
+        current_remote_version = ""
         
-        # Si hay conexión SSH, verificar archivo remoto
-        remote_file = f"{self.remote_path}/{file_path}"
-        cmd_check = f"test -f \"{remote_file}\" && echo \"EXISTS\" || echo \"NOT_EXISTS\""
-        _, stdout, _ = ssh.execute(cmd_check)
-        remote_exists = "EXISTS" in stdout
-        details["remote_exists"] = remote_exists
-        
-        # Si el archivo remoto existe, verificar checksum
-        if remote_exists:
-            remote_checksum = self.get_remote_file_checksum(ssh, remote_file)
-            details["current_remote_checksum"] = remote_checksum
+        if ssh and ssh.client:
+            # Construir ruta remota completa
+            remote_file = self.remote_path + file_path
             
-            # Verificar si hay archivos de backup en el servidor
-            backup_pattern = f"{remote_file}.bak.*"
-            cmd_find_backups = f"find $(dirname \"{remote_file}\") -name \"$(basename \"{backup_pattern}\")\" -type f | sort"
-            _, stdout, _ = ssh.execute(cmd_find_backups)
-            remote_backups = [line.strip() for line in stdout.split('\n') if line.strip()]
-            details["remote_backups"] = remote_backups
+            # Comprobar si el archivo remoto existe
+            cmd = f"test -f '{remote_file}' && echo 'EXISTS' || echo 'NOT_FOUND'"
+            code, stdout, stderr = ssh.execute(cmd)
             
-            # Verificar versión remota si es plugin o tema
-            if patch_info.get("item_type") in ["plugin", "theme"] and patch_info.get("item_slug"):
-                try:
-                    _, _, remote_version = get_item_version_from_path(
-                        file_path, 
-                        self.remote_path,
-                        remote=True,
-                        remote_host=self.remote_host,
-                        remote_path=self.remote_path,
-                        memory_limit=self.wp_memory_limit,
-                        use_ddev=False
-                    )
-                    details["current_remote_version"] = remote_version
-                    
-                    # Comparar versiones
-                    if remote_version and patch_info.get("remote_version") and remote_version != patch_info.get("remote_version"):
-                        details["messages"].append(f"La versión remota ha cambiado: {patch_info.get('remote_version')} → {remote_version}")
-                except Exception as e:
-                    error_msg = str(e)
-                    details["error"] = error_msg
-                    if "memory size" in error_msg.lower():
-                        details["messages"].append("No se pudo obtener la versión remota (error de memoria PHP)")
-                    else:
-                        details["messages"].append(f"Error al obtener la versión remota: {error_msg}")
-            
-            # Determinar estado del parche
-            if patch_info.get("applied_date"):
-                # Parche está marcado como aplicado
-                patched_checksum = patch_info.get("patched_checksum", "")
+            if "EXISTS" in stdout:
+                remote_exists = True
                 
-                if remote_checksum == patched_checksum:
-                    # El checksum remoto coincide con el del parche aplicado
-                    if local_exists and current_local_checksum == registered_local_checksum:
-                        return PATCH_STATUS_APPLIED, details
-                    else:
-                        # El archivo local ha cambiado, parche obsoleto
-                        return PATCH_STATUS_OBSOLETED, details
-                else:
-                    # El checksum remoto no coincide, parche desajustado
-                    if details.get("current_remote_version") != patch_info.get("remote_version"):
-                        # La versión remota cambió, parche caduco
-                        return PATCH_STATUS_STALE, details
-                    else:
-                        # Mismo plugin pero archivo modificado en el servidor
-                        return PATCH_STATUS_MISMATCHED, details
-            else:
-                # Parche no está aplicado
-                if local_exists and current_local_checksum == registered_local_checksum:
-                    # El archivo local coincide con el registrado, parche pendiente
-                    return PATCH_STATUS_PENDING, details
-                else:
-                    # El archivo local ha cambiado, parche huérfano
-                    return PATCH_STATUS_ORPHANED, details
-        else:
-            # El archivo remoto no existe
-            details["messages"].append(f"El archivo remoto no existe: {remote_file}")
-            
-            if patch_info.get("applied_date"):
-                # Parche está marcado como aplicado pero el archivo no existe
-                return PATCH_STATUS_MISMATCHED, details
-            else:
-                # Parche no aplicado y archivo remoto no existe
-                if local_exists and current_local_checksum == registered_local_checksum:
-                    # Archivo local correcto, pendiente (será un archivo nuevo)
-                    return PATCH_STATUS_PENDING, details
-                else:
-                    # Archivo local modificado, huérfano
-                    return PATCH_STATUS_ORPHANED, details
-        
-        # Estado por defecto
-        return PATCH_STATUS_PENDING, details
+                # Obtener checksum del archivo remoto
+                remote_checksum = self.get_remote_file_checksum(ssh, remote_file)
+                
+                # Obtener versión del plugin/tema remoto
+                current_remote_version = self.get_remote_file_version(ssh, file_path)
+                
+        details["remote_exists"] = remote_exists
+        details["remote_checksum"] = remote_checksum
+        details["current_remote_version"] = current_remote_version
+                
+        # Determinar estado del parche
+        return determine_patch_status(
+            patch_info,
+            remote_exists,
+            remote_checksum,
+            local_exists,
+            current_local_checksum,
+            current_remote_version,
+            patch_info.get("local_checksum", "")
+        )
 
     def show_config_info(self, verbose: bool = False) -> None:
         """
@@ -1339,35 +1059,6 @@ def apply_patch(file_path: str = None, dry_run: bool = False, show_details: bool
     manager = PatchManager()
     
     if file_path:
-        # Obtener el estado actual del parche
-        ssh = None
-        try:
-            if manager.check_remote_connection():
-                ssh = SSHClient(manager.remote_host)
-                ssh.connect()
-                
-                status_code, status_details = manager.get_patch_status(file_path, ssh)
-                
-                # Si el parche está huérfano y no se fuerza, mostrar error
-                if status_code == PATCH_STATUS_ORPHANED and not force:
-                    print(f"❌ Error: El parche para '{file_path}' está huérfano (ORPHANED)")
-                    print("   El archivo local ha cambiado y no coincide con el registrado.")
-                    print("   Usa --force para aplicar el parche de todos modos.")
-                    return False
-                
-                # Si el parche está obsoleto y no se fuerza, mostrar error
-                if status_code == PATCH_STATUS_OBSOLETED and not force:
-                    print(f"❌ Error: El parche para '{file_path}' está obsoleto (OBSOLETED)")
-                    print("   El archivo local ha cambiado después de haber aplicado el parche.")
-                    print("   Usa --force para aplicar el parche de todos modos.")
-                    return False
-        except Exception as e:
-            print(f"⚠️ Error al verificar estado del parche: {str(e)}")
-        finally:
-            # Cerrar la conexión SSH
-            if ssh and ssh.client:
-                ssh.disconnect()
-                
         # Aplicar un solo parche
         return manager.apply_patch(file_path, dry_run, show_details, force)
     else:
@@ -1398,13 +1089,7 @@ def get_patched_files() -> List[str]:
     manager = PatchManager()
     patched_files = []
     
-    # Si no hay parches registrados, devolver lista vacía
-    if not manager.lock_data.get("patches"):
-        return patched_files
-        
-    # Recopilar la lista de archivos parcheados
     for file_path, info in manager.lock_data.get("patches", {}).items():
-        # Solo incluir archivos que tengan parche aplicado
         if info.get("applied_date"):
             patched_files.append(file_path)
             

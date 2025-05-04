@@ -686,6 +686,192 @@ def init_command(with_db, with_media, verbose, dry_run, site):
     print("\n✅ Entorno de desarrollo inicializado correctamente")
     print("🌟 ¡Listo para comenzar a trabajar!")
 
+@cli.command()
+@click.option('--path', '-p', help='Ruta dentro del contenedor DDEV donde buscar WordPress (obsoleto, usar sites.yaml)')
+@site_option
+def verify_wp(path, site):
+    """
+    Verifica si WordPress está correctamente instalado.
+    
+    Este comando ejecuta 'wp core is-installed' directamente 
+    utilizando la configuración de sites.yaml, sin depender
+    de archivos .ddev.
+    """
+    from utils.wp_cli import run_wp_cli
+    from config_yaml import get_yaml_config
+    import os
+    
+    # Obtener configuración de sitios
+    config = get_yaml_config()
+    if not config.select_site(site):
+        sys.exit(1)
+    
+    print(f"🔍 Verificando instalación de WordPress...")
+    
+    # Obtener directorio local del proyecto desde la configuración
+    if 'ssh' not in config.config or 'local_path' not in config.config['ssh']:
+        print("❌ Error: No se encontró configuración de ruta local en sites.yaml")
+        sys.exit(1)
+        
+    # Obtener la ruta local del proyecto directamente de sites.yaml
+    local_path_str = config.config['ssh']['local_path']
+    
+    # Obtener el directorio base del proyecto
+    # Ejemplo: /home/user/proyecto/app/public -> /home/user/proyecto
+    local_path = Path(local_path_str)
+    project_dir = local_path.parent.parent  # Subir dos niveles desde app/public
+    
+    print(f"ℹ️ Directorio del proyecto DDEV: {project_dir}")
+    
+    # Obtener la ruta wp_path desde los parámetros base_path y docroot (exigidos explícitamente)
+    if 'ddev' not in config.config:
+        print("❌ Error: No se encontró sección 'ddev' en sites.yaml")
+        sys.exit(1)
+        
+    # Exigir ambos parámetros explícitamente (fail fast)
+    if 'base_path' not in config.config['ddev'] or 'docroot' not in config.config['ddev']:
+        print("❌ Error: Configuración DDEV incompleta en sites.yaml")
+        print("   Se requieren ambos parámetros:")
+        print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
+        print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
+        sys.exit(1)
+    
+    # Construir la ruta wp_path con los parámetros configurados
+    base_path = config.config['ddev']['base_path']
+    docroot = config.config['ddev']['docroot']
+    wp_path = f"{base_path}/{docroot}"
+    
+    # Ignorar cualquier ruta pasada por parámetro (obsoleta)
+    if path:
+        print("⚠️ Ignorando parámetro --path (obsoleto)")
+        print("   La ruta se obtiene automáticamente de sites.yaml (ddev.base_path + ddev.docroot)")
+    
+    print(f"ℹ️ Usando ruta WordPress dentro del contenedor: {wp_path}")
+        
+    # Verificar que el directorio existe en el sistema
+    if not project_dir.exists():
+        print(f"❌ Error: El directorio del proyecto '{project_dir}' no existe")
+        sys.exit(1)
+    
+    # Ejecutar verificación con la ruta especificada
+    code, stdout, stderr = run_wp_cli(
+        ["core", "is-installed"],
+        project_dir,  # Ejecutar en el directorio del proyecto
+        remote=False,
+        use_ddev=True,
+        wp_path=wp_path
+    )
+    
+    # Mostrar resultado
+    if code == 0:
+        print("✅ WordPress está correctamente instalado y configurado")
+        sys.exit(0)
+    else:
+        print("❌ WordPress no está instalado o no se pudo detectar")
+        if stderr:
+            print(f"   Error: {stderr}")
+        print(f"   Ruta utilizada: {wp_path}")
+        sys.exit(1)
+
+@cli.command()
+@site_option
+def show_ddev_config(site):
+    """
+    Muestra la configuración WordPress de sites.yaml.
+    
+    Útil para diagnosticar problemas relacionados con la ruta de WordPress.
+    """
+    import subprocess
+    import os
+    from config_yaml import get_yaml_config
+    from pathlib import Path
+    
+    # Obtener configuración de sitios
+    config = get_yaml_config()
+    if not config.select_site(site):
+        sys.exit(1)
+    
+    print("🔍 Obteniendo configuración desde sites.yaml...")
+    
+    # Verificar si existe configuración DDEV en sites.yaml
+    if 'ddev' not in config.config:
+        print("❌ No se encontró configuración DDEV en sites.yaml")
+        sys.exit(1)
+    
+    # Obtener directorio local del proyecto desde la configuración
+    if 'ssh' not in config.config or 'local_path' not in config.config['ssh']:
+        print("❌ Error: No se encontró configuración de ruta local en sites.yaml")
+        sys.exit(1)
+        
+    # Mostrar información desde sites.yaml
+    print("📋 Configuración DDEV encontrada en sites.yaml:")
+    
+    ddev_config = config.config['ddev']
+    
+    # Verificar que existen ambos parámetros requeridos
+    if 'base_path' not in ddev_config or 'docroot' not in ddev_config:
+        print("❌ Error: Configuración DDEV incompleta en sites.yaml")
+        print("   Se requieren ambos parámetros:")
+        print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
+        print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
+        sys.exit(1)
+    
+    # Mostrar información de la configuración actual
+    base_path = ddev_config['base_path']
+    docroot = ddev_config['docroot']
+    wp_path = f"{base_path}/{docroot}"
+    
+    print(f"   - base_path: {base_path}")
+    print(f"   - docroot: {docroot}")
+    print(f"   - Ruta WP completa: {wp_path}")
+    
+    # Obtener la ruta local del proyecto directamente de sites.yaml
+    local_path_str = config.config['ssh']['local_path']
+    local_path = Path(local_path_str)
+    
+    # Obtener el directorio base del proyecto
+    # Ejemplo: /home/user/proyecto/app/public -> /home/user/proyecto
+    project_dir = local_path.parent.parent  # Subir dos niveles desde app/public
+    
+    print(f"   - Directorio local del proyecto: {project_dir}")
+    
+    # Verificar que el directorio existe
+    if not project_dir.exists():
+        print(f"   ❌ El directorio del proyecto no existe: {project_dir}")
+    else:
+        print(f"   ✅ El directorio del proyecto existe")
+    
+    # Ejecutar ddev describe para mostrar URLs (en el directorio correcto)
+    print("\n📡 DDEV describe:")
+    
+    try:
+        result = subprocess.run(
+            ["ddev", "describe"], 
+            cwd=project_dir,  # Ejecutar en el directorio del proyecto
+            capture_output=True, 
+            text=True, 
+            check=False
+        )
+        
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if ":" in line:
+                    print(f"   {line.strip()}")
+        else:
+            print(f"   ❌ Error: {result.stderr}")
+    except Exception as e:
+        print(f"   ❌ Error al ejecutar ddev describe: {str(e)}")
+    
+    # Sugerir comando para verificar WordPress
+    print(f"\n💡 Para verificar WordPress, ejecuta:")
+    print(f"   python cli.py verify-wp --site={config.current_site}")
+        
+    # Mostrar valores de URL
+    if 'urls' in config.config and 'remote' in config.config['urls']:
+        print(f"\n🌐 URL remota configurada: {config.config['urls']['remote']}")
+    if 'urls' in config.config and 'local' in config.config['urls']:
+        print(f"🖥️ URL local configurada: {config.config['urls']['local']}")
+
 def main():
     """
     Punto de entrada principal

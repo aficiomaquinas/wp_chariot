@@ -1,15 +1,17 @@
 """
 Utilidades para interactuar con WP-CLI desde Python
 
+IMPORTANTE: Nunca utilices comandos wp-cli directamente. Siempre usa estas funciones
+que gestionan automáticamente las rutas correctas según la configuración del sitio en sites.yaml.
+
 Este módulo sigue la filosofía de diseño "fail fast":
 - Fallar explícitamente cuando falta información crítica, en lugar de adivinar o inferir
 - No usar valores predeterminados "mágicos" que puedan causar comportamientos inesperados
 - Mantener la idempotencia: la misma entrada debe producir siempre la misma salida
 - Proporcionar mensajes de error claros que expliquen por qué falló y cómo resolverlo
 
-La configuración explícita es un requisito, no una opción. Si un parámetro crítico
-como la ruta de WordPress dentro del contenedor DDEV no está especificado, el sistema
-fallará en lugar de intentar adivinarlo.
+La configuración explícita es un requisito, no una opción. Toda la información necesaria
+se debe obtener de la configuración en sites.yaml, incluida la ruta dentro del contenedor DDEV.
 """
 
 import os
@@ -18,8 +20,12 @@ import json
 import shlex
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union, Literal
+import yaml
 
 from config_yaml import get_yaml_config, get_nested
+
+# Configuración de rutas wp-cli - esto podría moverse a sites.yaml en el futuro
+WP_CLI_PATH = "/usr/local/bin/wp"
 
 def _format_wp_command(command: List[str]) -> str:
     """
@@ -33,77 +39,55 @@ def _format_wp_command(command: List[str]) -> str:
     """
     return " ".join([f"'{arg}'" if ' ' in arg else arg for arg in command])
 
-def _get_ddev_wp_path(config, wp_path: Optional[str] = None) -> str:
-    """
-    Obtiene la ruta de WordPress dentro del contenedor DDEV
-    
-    Sigue el principio "fail fast": si no se encuentra una ruta explícita,
-    falla inmediatamente en lugar de intentar inferirla.
-    
-    Args:
-        config: Configuración del proyecto
-        wp_path: Ruta personalizada (opcional)
-        
-    Returns:
-        str: Ruta de WordPress dentro del contenedor DDEV
-        
-    Raises:
-        ValueError: Si no se puede determinar la ruta de WordPress
-    """
-    # Si se proporciona una ruta explícita, usarla
-    if wp_path:
-        return wp_path
-        
-    # Intentar obtener la ruta del contenedor DDEV desde la configuración
-    ddev_wp_path = get_nested(config, "ddev", "webroot")
-    
-    # Si no está en la configuración, fallar explícitamente
-    if not ddev_wp_path:
-        raise ValueError("No se ha especificado la ruta de WordPress (webroot) en la configuración DDEV. Este es un parámetro obligatorio para la ejecución de comandos WP-CLI.")
-            
-    return ddev_wp_path
-
 def _execute_ddev_command(command: List[str], path: Union[str, Path], wp_path: Optional[str] = None, 
                          memory_limit: str = "512M") -> Tuple[int, str, str]:
     """
     Ejecuta un comando WP-CLI usando DDEV
     
-    Implementa el principio "fail fast": si no se puede determinar una ruta de WordPress válida,
-    falla explícitamente en lugar de continuar con valores predeterminados o inferidos.
+    Sigue el principio "fail fast": si no podemos ejecutar el comando correctamente, fallamos
+    explícitamente en lugar de adivinar rutas o parámetros.
+    
+    IMPORTANTE: wp_path es obligatorio y debe obtenerse desde sites.yaml.
     
     Args:
         command: Lista con el comando y sus argumentos
-        path: Ruta al directorio de WordPress
-        wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        path: Ruta al directorio donde ejecutar el comando ddev (directorio del proyecto)
+        wp_path: Ruta dentro del contenedor DDEV donde se encuentra WordPress (OBLIGATORIO)
         memory_limit: Límite de memoria para PHP
         
     Returns:
         Tuple[int, str, str]: Código de salida, salida estándar, error estándar
     """
-    config = get_yaml_config()
+    # Formatear el comando base de wp-cli
+    wp_cmd = " ".join(command)
+    
+    # Si no hay wp_path, fallamos explícitamente
+    if not wp_path:
+        return 1, "", "Error: No se especificó la ruta de WordPress dentro del contenedor (wp_path). Debe obtenerse de sites.yaml."
+    
+    # Construir el comando completo usando el wp_path especificado
+    exec_cmd = f"cd {wp_path} && "
+    
+    # Añadir el comando wp-cli con ruta absoluta y opciones de memoria si necesario
+    if memory_limit:
+        exec_cmd += f"php -d memory_limit={memory_limit} {WP_CLI_PATH} {wp_cmd}"
+    else:
+        exec_cmd += f"{WP_CLI_PATH} {wp_cmd}"
     
     try:
-        ddev_wp_path = _get_ddev_wp_path(config, wp_path)
-    except ValueError as e:
-        # Propagar el error según el principio "fail fast"
-        return 1, "", str(e)
-    
-    wp_cmd_str = _format_wp_command(command)
-    
-    # Añadir límite de memoria al comando
-    cmd = ["ddev", "exec", f"cd {ddev_wp_path} && php -d memory_limit={memory_limit} $(which wp) {wp_cmd_str}"]
-    
-    try:
+        # Ejecutar el comando en DDEV y devolver resultados directamente
+        # Ejecutamos en el directorio especificado en path
         result = subprocess.run(
-            cmd,
-            cwd=str(path),
+            ["ddev", "exec", exec_cmd],
+            cwd=str(path),  # Importante: ejecutar en este directorio
             capture_output=True,
             text=True,
             check=False
         )
         return result.returncode, result.stdout, result.stderr
     except Exception as e:
-        return 1, "", str(e)
+        # Si hay error en la ejecución, reportar inmediatamente
+        return 1, "", f"Error al ejecutar comando DDEV: {str(e)}"
 
 def _execute_direct_command(command: List[str], path: Union[str, Path], 
                            memory_limit: str = "512M") -> Tuple[int, str, str]:
@@ -176,14 +160,18 @@ def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False,
     """
     Ejecuta un comando de WP-CLI
     
+    IMPORTANTE: Para comandos DDEV (use_ddev=True), wp_path es OBLIGATORIO y 
+    debe obtenerse desde sites.yaml.
+    
     Args:
         command: Lista con el comando y sus argumentos
-        path: Ruta al directorio de WordPress
+        path: Ruta al directorio de WordPress en el host (directorio del proyecto)
         remote: Si es True, ejecuta el comando en el servidor remoto
         remote_host: Host remoto (solo si remote=True)
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
-        wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        wp_path: Ruta dentro del contenedor DDEV donde se encuentra WordPress
+                (REQUERIDO si use_ddev=True, se obtiene de sites.yaml)
         memory_limit: Límite de memoria para PHP (si es None, se usa el valor de configuración)
         
     Returns:
@@ -199,9 +187,15 @@ def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False,
     # Ejecutar comando según el entorno
     if remote:
         # Comando remoto via SSH
+        if not remote_host or not remote_path:
+            return 1, "", "Se requiere host y ruta remotos para ejecutar WP-CLI en el servidor"
         return _execute_ssh_command(command, remote_host, remote_path, memory_limit)
     elif use_ddev:
-        # Comando local usando DDEV
+        # Comando local usando DDEV - wp_path es obligatorio
+        if not wp_path:
+            # Falla explícitamente sin wp_path
+            return 1, "", "Error: No se especificó wp_path (ruta dentro del contenedor DDEV). Debe obtenerse de sites.yaml."
+        
         return _execute_ddev_command(command, path, wp_path, memory_limit)
     else:
         # Comando local directo
@@ -691,21 +685,44 @@ def is_wordpress_installed(path: Union[str, Path], remote: bool = False,
     """
     Verifica si WordPress está correctamente instalado
     
+    Siguiendo el principio "fail fast", ejecuta 'wp core is-installed' y devuelve
+    su resultado sin intentar detectar configuraciones automáticamente.
+    
+    IMPORTANTE: Para DDEV (use_ddev=True), wp_path es OBLIGATORIO y debe
+    obtenerse desde sites.yaml.
+    
     Args:
-        path: Ruta al directorio de WordPress
+        path: Ruta al directorio de WordPress en el host (directorio del proyecto)
         remote: Si es True, verifica en el servidor remoto
         remote_host: Host remoto (solo si remote=True)
         remote_path: Ruta remota (solo si remote=True)
         use_ddev: Si es True (predeterminado), utiliza ddev en entorno local
-        wp_path: Ruta específica de WordPress dentro del contenedor (opcional)
+        wp_path: Ruta dentro del contenedor DDEV (REQUERIDO si use_ddev=True)
         memory_limit: Límite de memoria para PHP (opcional)
         
     Returns:
         bool: True si WordPress está instalado, False en caso contrario
     """
-    # Verificar existencia de archivos básicos
+    # Comando estándar para verificar la instalación de WordPress
     cmd = ["core", "is-installed"]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
+    # Si estamos usando DDEV pero no se proporcionó wp_path, devolvemos False directamente
+    if use_ddev and not wp_path:
+        print("❌ Error: Falta wp_path (ruta dentro del contenedor DDEV)")
+        print("   Esta información debe obtenerse de sites.yaml (ddev.webroot o ddev.base_path + ddev.docroot)")
+        return False
     
+    # Ejecutar el comando - fail fast
+    code, stdout, stderr = run_wp_cli(
+        cmd, 
+        path, 
+        remote=remote, 
+        remote_host=remote_host, 
+        remote_path=remote_path,
+        use_ddev=use_ddev, 
+        wp_path=wp_path,
+        memory_limit=memory_limit
+    )
+    
+    # Devolver resultado directamente sin procesamiento adicional
     return code == 0 

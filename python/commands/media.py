@@ -57,13 +57,23 @@ def configure_media_path(
     remote_host = get_nested(config, "ssh", "remote_host")
     remote_path = get_nested(config, "ssh", "remote_path")
     
-    # Obtener ruta dentro del contenedor DDEV (valor obligatorio desde config.yaml)
-    ddev_wp_path = get_nested(config, "ddev", "webroot")
-    if not ddev_wp_path and not remote:
-        print("⚠️ Error: No se ha configurado ddev.webroot en config.yaml")
-        print("   Esta configuración es obligatoria para usar DDEV.")
-        print("   Ejemplo: webroot: \"/var/www/html/app/public\"")
+    # Obtener ruta dentro del contenedor DDEV - exigir explícitamente los dos parámetros
+    # Fail fast: sin compatibilidad con formatos antiguos
+    base_path = get_nested(config, "ddev", "base_path")
+    docroot = get_nested(config, "ddev", "docroot")
+    
+    if not base_path or not docroot:
+        print("❌ Error: Configuración DDEV incompleta en sites.yaml")
+        print("   Se requieren ambos parámetros:")
+        print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
+        print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
         return False
+        
+    # Construir la ruta completa usando los dos parámetros
+    ddev_wp_path = f"{base_path}/{docroot}"
+    
+    if verbose:
+        print(f"ℹ️ Usando ruta WordPress: {ddev_wp_path}")
     
     # SIEMPRE obtener los valores desde la configuración
     media_url = get_nested(config, "media", "url", "")

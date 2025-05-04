@@ -36,7 +36,9 @@ sites:
       path: "../media"
 
     ddev:
-      webroot: "/var/www/html/app/public"
+      base_path: "/var/www/html"
+      docroot: "app/public"
+
 
     # Puedes sobrescribir exclusiones específicas para este sitio
     exclusions:

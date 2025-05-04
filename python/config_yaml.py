@@ -592,6 +592,36 @@ class YAMLConfig:
             current = current[key]
         return current
         
+    def get_strict(self, *path: str) -> Any:
+        """
+        Obtiene un valor de configuración siguiendo el principio fail-fast
+        
+        A diferencia de get(), esta función lanza una excepción si la ruta no existe,
+        en lugar de retornar un valor por defecto.
+        
+        Args:
+            *path: Ruta de claves para acceder al valor
+            
+        Returns:
+            Any: El valor de configuración
+            
+        Raises:
+            ValueError: Si la ruta no existe en la configuración
+        """
+        current = self.config
+        for i, key in enumerate(path):
+            if not isinstance(current, dict):
+                path_str = ' -> '.join(path[:i])
+                raise ValueError(f"La ruta de configuración '{path_str}' no es un diccionario")
+            
+            if key not in current:
+                path_str = ' -> '.join(path[:i+1])
+                raise ValueError(f"La clave '{key}' no existe en la ruta '{path_str}'")
+            
+            current = current[key]
+        
+        return current
+        
     def get_exclusions(self) -> Dict[str, str]:
         """
         Obtiene el diccionario de exclusiones para rsync
@@ -678,10 +708,26 @@ class YAMLConfig:
         """
         Obtiene el límite de memoria para PHP de WP-CLI
         
+        Siguiendo el principio "fail fast", esta función retorna exactamente
+        lo que hay en la configuración sin intentar arreglar valores inválidos.
+        Si el valor no existe en la configuración, se falla explícitamente.
+        
         Returns:
             str: Límite de memoria para PHP
+            
+        Raises:
+            ValueError: Si el valor no existe en la configuración
         """
-        return self.get("wp_cli", "memory_limit", "512M")
+        # Verificar si existe la sección wp_cli
+        if "wp_cli" not in self.config:
+            raise ValueError("La sección 'wp_cli' no está definida en la configuración")
+        
+        # Verificar si existe la clave memory_limit
+        if "memory_limit" not in self.config["wp_cli"]:
+            raise ValueError("La clave 'memory_limit' no está definida en la sección 'wp_cli'")
+        
+        # Retornar exactamente lo que hay en la configuración, sin intentar arreglarlo
+        return self.config["wp_cli"]["memory_limit"]
 
     def merge_config(self, config):
         """

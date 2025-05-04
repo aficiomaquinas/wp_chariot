@@ -11,12 +11,14 @@ import tempfile
 import time
 import re
 import subprocess
+import shutil
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
 
 from config_yaml import get_yaml_config
 from utils.ssh import SSHClient
 from utils.filesystem import ensure_dir_exists, create_backup
+from utils.wp_cli import run_wp_cli
 
 class DatabaseSynchronizer:
     """
@@ -103,6 +105,11 @@ class DatabaseSynchronizer:
         self.config = {'security': {'backups': 'disabled'}}
         if config_obj and hasattr(config_obj, 'config'):
             self.config = config_obj.config
+            
+            # Verificar si tenemos configuración de DDEV y mostrarla si estamos en modo detallado
+            if self.verbose and 'ddev' in self.config:
+                ddev_webroot = self.config.get('ddev', {}).get('webroot', 'No configurada')
+                print(f"   - DDEV webroot: {ddev_webroot}")
         
         # Verificar si se están usando valores por defecto
         default_values = ["example-server", "nombre_db_remota", "usuario_db_remota", "contraseña_db_remota"]
@@ -185,7 +192,13 @@ class DatabaseSynchronizer:
                 # Generar un nombre de archivo temporal único en el servidor
                 random_suffix = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
                 file_hash = hashlib.md5(f"{self.remote_db_name}_{random_suffix}".encode()).hexdigest()
-                remote_temp_dir = f"{self.remote_path}/wp-content"
+                
+                # Evitar el doble slash cuando remote_path ya termina con /
+                if self.remote_path.endswith('/'):
+                    remote_temp_dir = f"{self.remote_path}wp-content"
+                else:
+                    remote_temp_dir = f"{self.remote_path}/wp-content"
+                    
                 remote_temp_pass = f"{remote_temp_dir}/.wp_deploy_tmp_{file_hash}.cnf"
                 
                 # Subir el archivo al servidor
@@ -224,8 +237,13 @@ class DatabaseSynchronizer:
                 
                 # Verificar que también podemos conectarnos usando wp-cli
                 # (esto verifica que WordPress está correctamente configurado)
-                db_check_cmd = f"cd {self.remote_path} && wp db check"
-                code, stdout, stderr = ssh.execute(db_check_cmd)
+                code, stdout, stderr = run_wp_cli(
+                    ["db", "check"],
+                    path=".",  # No importa aquí, se usa remote_path
+                    remote=True,
+                    remote_host=self.remote_host,
+                    remote_path=self.remote_path
+                )
                 
                 if code != 0:
                     print(f"⚠️ WordPress puede no estar correctamente configurado: {stderr}")
@@ -265,10 +283,36 @@ class DatabaseSynchronizer:
         temp_dir = Path(tempfile.gettempdir()) / f"wp-deploy-{timestamp}"
         ensure_dir_exists(temp_dir)
         
-        remote_sql_file = f"{self.remote_path}/wp-content/db-export-{timestamp}.sql"
+        # Evitar doble slash en rutas remotas
+        if self.remote_path.endswith('/'):
+            remote_sql_file = f"{self.remote_path}wp-content/db-export-{timestamp}.sql"
+        else:
+            remote_sql_file = f"{self.remote_path}/wp-content/db-export-{timestamp}.sql"
+        
         local_sql_file = temp_dir / f"db-export-{timestamp}.sql"
         
-        # Crear comando de exportación
+        # Obtener información sobre el charset de la base de datos
+        with SSHClient(self.remote_host) as ssh:
+            print("🔍 Obteniendo información sobre el charset de la base de datos...")
+            charset_cmd = (
+                f"cd {self.remote_path} && "
+                f"wp db query 'SHOW VARIABLES LIKE \"%character%\";' --skip-column-names"
+            )
+            try:
+                code, stdout, stderr = ssh.execute(charset_cmd)
+                if code == 0 and stdout:
+                    charset_info = stdout.strip().split('\n')
+                    for line in charset_info:
+                        if 'character_set_database' in line:
+                            db_charset = line.split()[1]
+                            print(f"   - Charset de la base de datos: {db_charset}")
+                        elif 'character_set_connection' in line:
+                            conn_charset = line.split()[1]
+                            print(f"   - Charset de conexión: {conn_charset}")
+            except Exception as e:
+                print(f"   ⚠️ No se pudo obtener información del charset: {str(e)}")
+        
+        # Crear comando de exportación con opciones explícitas de charset
         export_cmd = (
             f"cd {self.remote_path} && "
             f"wp db export {remote_sql_file} --add-drop-table"
@@ -289,12 +333,19 @@ class DatabaseSynchronizer:
             
             if not success:
                 print("❌ Error al descargar archivo SQL")
+                print(f"   El archivo permanece en el servidor: {remote_sql_file}")
                 return None
                 
-            # Eliminar archivo SQL temporal en el servidor remoto
+            # Solo eliminamos el archivo si la descarga fue exitosa
+            print(f"🧹 Limpiando archivo temporal en el servidor...")
             ssh.execute(f"rm {remote_sql_file}")
             
         print(f"✅ Base de datos exportada exitosamente a {local_sql_file}")
+        
+        # Mostrar información sobre el archivo descargado
+        file_size_mb = os.path.getsize(local_sql_file) / (1024*1024)
+        print(f"   - Tamaño del archivo: {file_size_mb:.2f} MB")
+        
         return str(local_sql_file)
 
     def export_local_db(self) -> Optional[str]:
@@ -343,63 +394,30 @@ class DatabaseSynchronizer:
         
     def search_replace_urls(self, sql_file: str, reverse: bool = False) -> Optional[str]:
         """
-        Reemplaza URLs en el archivo SQL
+        Reemplaza URLs en el archivo SQL exportado
         
         Args:
-            sql_file: Ruta al archivo SQL de origen
-            reverse: Si es True, reemplaza local -> remoto en lugar de remoto -> local
+            sql_file: Ruta al archivo SQL
+            reverse: Si es True, reemplaza local->remoto en lugar de remoto->local
             
         Returns:
-            Optional[str]: Ruta al archivo SQL procesado o None si falló
+            Optional[str]: Ruta al archivo procesado, None si hubo error
         """
         if not sql_file or not os.path.exists(sql_file):
             print(f"❌ Archivo SQL no encontrado: {sql_file}")
             return None
-        
+            
+        # Ya no modificamos el archivo SQL, el reemplazo se hará después de importar
         if reverse:
-            source_url = self.local_url
-            target_url = self.remote_url
-            print(f"🔄 Procesando URLs en archivo SQL (local -> remoto)...")
+            print(f"ℹ️ Las URLs se reemplazarán después de importar: {self.local_url} -> {self.remote_url}")
         else:
-            source_url = self.remote_url
-            target_url = self.local_url
-            print(f"🔄 Procesando URLs en archivo SQL (remoto -> local)...")
+            print(f"ℹ️ Las URLs se reemplazarán después de importar: {self.remote_url} -> {self.local_url}")
             
-        print(f"   - Reemplazando: {source_url} -> {target_url}")
+        # Solo informar el tamaño del archivo
+        file_size = os.path.getsize(sql_file)
+        print(f"   - Tamaño del archivo: {file_size / (1024*1024):.2f} MB")
         
-        # Crear archivo temporal para el resultado
-        output_file = f"{sql_file.split('.')[0]}.sql"
-        
-        try:
-            # Leer el archivo SQL
-            with open(sql_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-                
-            # Reemplazar URLs
-            content = content.replace(source_url, target_url)
-            
-            # Reemplazar variantes con www, https, http
-            source_variants = [
-                source_url.replace('https://', 'http://'),
-                source_url.replace('http://', 'https://'),
-                source_url.replace('://www.', '://'),
-                source_url.replace('://', '://www.')
-            ]
-            
-            for source_var in source_variants:
-                if source_var != source_url:
-                    content = content.replace(source_var, target_url)
-                    
-            # Guardar el archivo procesado
-            with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(content)
-                
-            print(f"✅ URLs procesadas exitosamente")
-            return output_file
-            
-        except Exception as e:
-            print(f"❌ Error al procesar URLs: {str(e)}")
-            return None
+        return sql_file  # Devolvemos el mismo archivo sin procesar
             
     def import_to_local(self, sql_file: str) -> bool:
         """
@@ -449,72 +467,140 @@ class DatabaseSynchronizer:
                 print(f"⚠️ Error al crear copia de seguridad: {str(e)}")
                 
         # Asegurarse de que el archivo tenga la extensión correcta
-        if sql_file.endswith('.processed'):
-            new_sql_file = sql_file.replace('.processed', '')
+        if not sql_file.endswith('.sql'):
+            new_sql_file = f"{sql_file.split('.')[0]}.sql"
             try:
                 os.rename(sql_file, new_sql_file)
                 sql_file = new_sql_file
                 print(f"✅ Archivo renombrado para asegurar compatibilidad: {sql_file}")
             except Exception as e:
                 print(f"⚠️ No se pudo renombrar el archivo: {str(e)}")
+        
+        # Verificar el inicio del archivo SQL para detectar posibles problemas
+        try:
+            with open(sql_file, 'rb') as f:
+                header = f.read(4096)  # Leer los primeros 4KB
                 
+                # Verificar si parece un archivo SQL válido
+                if not header.startswith(b"-- ") and not header.startswith(b"/*") and b"CREATE TABLE" not in header and b"INSERT INTO" not in header:
+                    print("⚠️ El archivo SQL podría no ser válido o tener un formato inesperado")
+                    print("   Se intentará importar de todos modos pero podría fallar")
+        except Exception as e:
+            print(f"⚠️ No se pudo verificar el contenido del archivo SQL: {str(e)}")
+            
         # Importar el SQL a DDEV
         try:
             print(f"⚙️ Importando archivo SQL a DDEV...")
+            print(f"   Archivo: {sql_file}")
+            print(f"   Tamaño: {os.path.getsize(sql_file) / (1024*1024):.2f} MB")
+            
+            # Obtener la ruta de WordPress dentro del contenedor desde la configuración (sites.yaml)
+            ddev_wp_path = None
+            if hasattr(self, 'config') and isinstance(self.config, dict) and 'ddev' in self.config:
+                ddev_config = self.config.get('ddev', {})
+                # Exigir explícitamente ambos parámetros (fail fast)
+                if 'base_path' not in ddev_config or 'docroot' not in ddev_config:
+                    print("❌ Error: Configuración DDEV incompleta en sites.yaml")
+                    print("   Se requieren ambos parámetros:")
+                    print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
+                    print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
+                    return False
+                
+                # Construir la ruta WP completa
+                base_path = ddev_config.get('base_path')
+                docroot = ddev_config.get('docroot')
+                ddev_wp_path = f"{base_path}/{docroot}"
+                print(f"ℹ️ Usando ruta WordPress: {ddev_wp_path}")
+            else:
+                print("❌ Error: No se encontró configuración DDEV en sites.yaml")
+                print("   Se requiere la sección 'ddev' con 'base_path' y 'docroot'")
+                return False
+            
+            # Usar un comando más explícito con todas las opciones completas
+            # para diagnosticar mejor cualquier error
             result = subprocess.run(
-                ["ddev", "import-db", "--file", sql_file],
+                ["ddev", "import-db", "--file", sql_file, "--database", "db"],
                 cwd=self.local_path.parent,
                 capture_output=True,
                 text=True
             )
             
             if result.returncode != 0:
-                print(f"❌ Error al importar base de datos: {result.stderr}")
-                return False
+                print(f"❌ Error al importar base de datos:")
+                print(f"   - Código de error: {result.returncode}")
+                if result.stderr:
+                    print(f"   - Error: {result.stderr}")
+                if result.stdout:
+                    print(f"   - Salida: {result.stdout}")
+                    
+                # Verificar errores comunes
+                error_output = result.stderr + result.stdout
+                if "ERROR 1180" in error_output or "Operation not permitted" in error_output:
+                    print("\n⚠️ Se detectó un error de operación no permitida durante la importación.")
+                    print("   Este error suele ocurrir por problemas de permisos o restricciones en el sistema de archivos.")
+                    print("   Recomendaciones:")
+                    print("   1. Asegúrate de que el usuario tiene permisos de escritura en el directorio")
+                    print("   2. Verifica que no hay bloqueos en la base de datos")
+                    print("   3. Intenta reimportar con un archivo más pequeño o fragmentado")
                 
+                elif "Unknown character set" in error_output:
+                    print("\n⚠️ Se detectó un error de conjunto de caracteres desconocido.")
+                    print("   Esto puede ocurrir cuando el SQL contiene declaraciones de charset que MySQL/MariaDB no reconoce.")
+                    print("   Recomendaciones:")
+                    print("   1. Edita el archivo SQL para cambiar las declaraciones de charset")
+                    print("   2. Usa una herramienta como 'sed' para corregir estos problemas")
+                    
+                # Intentar un enfoque alternativo de importación directa por MySQL
+                print("\n🔄 Intentando método alternativo de importación...")
+                try:
+                    alt_result = subprocess.run(
+                        ["ddev", "mysql", "db", "<", sql_file],
+                        cwd=self.local_path.parent,
+                        shell=True,  # Necesario para la redirección
+                        capture_output=True,
+                        text=True
+                    )
+                    
+                    if alt_result.returncode == 0:
+                        print("✅ Importación alternativa exitosa usando MySQL directo")
+                        # Continuar con el flujo de éxito
+                    else:
+                        print(f"❌ También falló el método alternativo: {alt_result.stderr}")
+                        return False
+                            
+                except Exception as alt_e:
+                    print(f"❌ Error en método alternativo: {str(alt_e)}")
+                    return False
+                    
+                # Si llegamos aquí es porque el método alternativo tuvo éxito
+                    
             print("✅ Base de datos importada exitosamente")
-            
-            # Intentar actualizar la URL del sitio y el home
-            try:
-                print("⚙️ Actualizando configuración de WordPress...")
-                subprocess.run(
-                    ["ddev", "wp", "option", "update", "siteurl", self.local_url],
-                    cwd=self.local_path.parent,
-                    capture_output=True
-                )
-                subprocess.run(
-                    ["ddev", "wp", "option", "update", "home", self.local_url],
-                    cwd=self.local_path.parent,
-                    capture_output=True
-                )
-            except Exception as e:
-                print(f"⚠️ No se pudo actualizar la URL del sitio: {str(e)}")
             
             # Ejecutar WP CLI para asegurarse de que todo funciona
             print("⚙️ Verificando instalación de WordPress...")
-            wp_check = subprocess.run(
-                ["ddev", "wp", "core", "is-installed"],
-                cwd=self.local_path.parent,
-                capture_output=True,
-                text=True
+            
+            if ddev_wp_path:
+                print(f"   Usando ruta WordPress: {ddev_wp_path}")
+            else:
+                print("   ⚠️ No se encontró ruta WordPress en la configuración")
+            
+            # Usar la función run_wp_cli para verificar la instalación con la ruta correcta
+            code, stdout, stderr = run_wp_cli(
+                ["core", "is-installed"],
+                self.local_path.parent,
+                remote=False,
+                use_ddev=True,
+                wp_path=ddev_wp_path  # Pasar la ruta obtenida de la configuración
             )
             
-            if wp_check.returncode != 0:
-                print("⚠️ WordPress no está completamente configurado después de la importación")
-                print("   Esto puede deberse a diferencias en la configuración entre entornos")
-                print("   Pero la base de datos se ha importado correctamente.")
-                # No fallamos aquí, ya que la importación funcionó
+            if code != 0:
+                print("❌ WordPress no está instalado o no se pudo detectar")
+                print("   La base de datos se importó correctamente, pero la verificación de WordPress falló")
+                if stderr:
+                    print(f"   Error: {stderr}")
             else:
-                print("✅ WordPress está correctamente instalado y configurado")
+                print("✅ WordPress verificado correctamente")
                 
-                # Limpiar cualquier caché existente
-                print("🧹 Limpiando caché...")
-                subprocess.run(
-                    ["ddev", "wp", "cache", "flush"],
-                    cwd=self.local_path.parent,
-                    capture_output=True
-                )
-            
             return True
             
         except Exception as e:
@@ -553,7 +639,12 @@ class DatabaseSynchronizer:
                 
         # Crear nombre para el archivo SQL temporal en el servidor
         timestamp = time.strftime("%Y%m%d-%H%M%S")
-        remote_sql_file = f"{self.remote_path}/wp-content/db-import-{timestamp}.sql"
+        
+        # Evitar doble slash en rutas remotas
+        if self.remote_path.endswith('/'):
+            remote_sql_file = f"{self.remote_path}wp-content/db-import-{timestamp}.sql"
+        else:
+            remote_sql_file = f"{self.remote_path}/wp-content/db-import-{timestamp}.sql"
         
         # Subir archivo SQL al servidor
         with SSHClient(self.remote_host) as ssh:
@@ -629,8 +720,8 @@ class DatabaseSynchronizer:
             if dry_run:
                 print("🔄 Modo simulación: No se realizarán cambios reales")
                 print(f"   - Se exportaría la base de datos remota '{self.remote_db_name}'")
-                print(f"   - Se reemplazaría URL: {self.remote_url} -> {self.local_url}")
                 print(f"   - Se importaría a DDEV (entorno local)")
+                print(f"   - Se reemplazaría URL: {self.remote_url} -> {self.local_url} usando wp-cli")
                 return True
                 
             # Proceso real
@@ -639,18 +730,88 @@ class DatabaseSynchronizer:
             if not sql_file:
                 return False
                 
-            # 2. Reemplazar URLs
-            processed_file = self.search_replace_urls(sql_file)
-            if not processed_file:
+            # 2. Importar a local (sin modificar el archivo)
+            success = self.import_to_local(sql_file)
+            if not success:
                 return False
                 
-            # 3. Importar a local
-            success = self.import_to_local(processed_file)
+            # 3. Reemplazar URLs usando wp-cli (después de importar)
+            print(f"🔄 Reemplazando URLs en la base de datos...")
+            
+            # Obtener dominios sin protocolo
+            remote_domain = self.remote_url.replace("https://", "").replace("http://", "")
+            local_domain = self.local_url.replace("https://", "").replace("http://", "")
+            
+            print(f"   - Cambiando: {self.remote_url} -> {self.local_url}")
+            
+            # Lista completa de patrones a reemplazar para cubrir todos los casos posibles
+            replacements = [
+                # URLs con protocolo completo
+                (self.remote_url, self.local_url),
+                
+                # URLs sin protocolo (//example.com)
+                (f"//{remote_domain}", f"//{local_domain}"),
+            ]
+            
+            # Si la URL remota usa HTTPS, añadir variante HTTP para asegurar que todas las URLs se reemplazan
+            if self.remote_url.startswith("https://"):
+                http_remote = self.remote_url.replace("https://", "http://")
+                replacements.append((http_remote, self.local_url))
+            
+            # Variantes con www y sin www
+            # Añadir variantes con www si no están presentes
+            if not remote_domain.startswith("www."):
+                www_remote_domain = f"www.{remote_domain}"
+                # Con protocolo
+                if "://" in self.remote_url:
+                    protocol = self.remote_url.split("://")[0]
+                    www_remote_url = f"{protocol}://{www_remote_domain}"
+                    replacements.append((www_remote_url, self.local_url))
+                # Sin protocolo
+                replacements.append((f"//{www_remote_domain}", f"//{local_domain}"))
+            # O variantes sin www si están presentes
+            elif remote_domain.startswith("www."):
+                non_www_remote_domain = remote_domain.replace("www.", "")
+                # Con protocolo
+                if "://" in self.remote_url:
+                    protocol = self.remote_url.split("://")[0]
+                    non_www_remote_url = f"{protocol}://{non_www_remote_domain}"
+                    replacements.append((non_www_remote_url, self.local_url))
+                # Sin protocolo
+                replacements.append((f"//{non_www_remote_domain}", f"//{local_domain}"))
+            
+            # Ejecutar cada reemplazo
+            for source, target in replacements:
+                print(f"   - Reemplazando: {source} -> {target}")
+                code, stdout, stderr = run_wp_cli(
+                    ["search-replace", source, target, "--all-tables", "--precise", "--skip-columns=guid"],
+                    self.local_path.parent,
+                    remote=False,
+                    use_ddev=True
+                )
+                
+                if code != 0 and self.verbose:
+                    print(f"   - Advertencia: {stderr}")
+            
+            # Limpiar transients después de reemplazar URLs
+            print("🧹 Limpiando transients para evitar referencias antiguas...")
+            code, stdout, stderr = run_wp_cli(
+                ["transient", "delete", "--all"],
+                self.local_path.parent,
+                remote=False,
+                use_ddev=True
+            )
+            
+            if code != 0 and self.verbose:
+                print(f"   - Advertencia al limpiar transients: {stderr}")
+            else:
+                print("   - Transients eliminados correctamente")
+            
+            print("✅ Todos los patrones de URL han sido reemplazados")
             
             # 4. Limpiar archivos temporales
             try:
                 os.unlink(sql_file)
-                os.unlink(processed_file)
             except:
                 pass
                 
@@ -691,7 +852,7 @@ class DatabaseSynchronizer:
             if dry_run:
                 print("🔄 Modo simulación: No se realizarán cambios reales")
                 print("   - Se exportaría la base de datos local")
-                print(f"   - Se reemplazaría URL: {self.local_url} -> {self.remote_url}")
+                print(f"   - Se reemplazaría URL: {self.local_url} -> {self.remote_url} usando wp-cli")
                 print(f"   - Se importaría al servidor remoto")
                 return True
                 
@@ -706,23 +867,109 @@ class DatabaseSynchronizer:
                 
             print("⚡ Confirmación recibida. Procediendo con la operación...")
             
-            # 1. Exportar base de datos local
+            # 1. Reemplazar URLs en la base de datos local antes de exportar
+            print(f"🔄 Reemplazando URLs en la base de datos local...")
+            
+            # Obtener dominios sin protocolo
+            remote_domain = self.remote_url.replace("https://", "").replace("http://", "")
+            local_domain = self.local_url.replace("https://", "").replace("http://", "")
+            
+            print(f"   - Cambiando: {self.local_url} -> {self.remote_url}")
+            
+            # Lista completa de patrones a reemplazar para cubrir todos los casos posibles
+            replacements = [
+                # URLs con protocolo completo
+                (self.local_url, self.remote_url),
+                
+                # URLs sin protocolo (//example.com)
+                (f"//{local_domain}", f"//{remote_domain}"),
+            ]
+            
+            # Si la URL local usa HTTPS, añadir variante HTTP para asegurar que todas las URLs se reemplazan
+            if self.local_url.startswith("https://"):
+                http_local = self.local_url.replace("https://", "http://")
+                replacements.append((http_local, self.remote_url))
+            
+            # Variantes con www y sin www
+            # Añadir variantes con www si no están presentes
+            if not local_domain.startswith("www."):
+                www_local_domain = f"www.{local_domain}"
+                # Con protocolo
+                if "://" in self.local_url:
+                    protocol = self.local_url.split("://")[0]
+                    www_local_url = f"{protocol}://{www_local_domain}"
+                    replacements.append((www_local_url, self.remote_url))
+                # Sin protocolo
+                replacements.append((f"//{www_local_domain}", f"//{remote_domain}"))
+            # O variantes sin www si están presentes
+            elif local_domain.startswith("www."):
+                non_www_local_domain = local_domain.replace("www.", "")
+                # Con protocolo
+                if "://" in self.local_url:
+                    protocol = self.local_url.split("://")[0]
+                    non_www_local_url = f"{protocol}://{non_www_local_domain}"
+                    replacements.append((non_www_local_url, self.remote_url))
+                # Sin protocolo
+                replacements.append((f"//{non_www_local_domain}", f"//{remote_domain}"))
+            
+            try:
+                # Ejecutar cada reemplazo
+                for source, target in replacements:
+                    print(f"   - Reemplazando: {source} -> {target}")
+                    code, stdout, stderr = run_wp_cli(
+                        ["search-replace", source, target, "--all-tables", "--precise", "--skip-columns=guid"],
+                        self.local_path.parent,
+                        remote=False,
+                        use_ddev=True
+                    )
+                    
+                    if code != 0 and self.verbose:
+                        print(f"   - Advertencia: {stderr}")
+                
+                print("✅ Reemplazo de URLs completado")
+            except Exception as e:
+                print(f"⚠️ Error al reemplazar URLs: {str(e)}")
+                print("   Continuando de todos modos...")
+            
+            # 2. Exportar base de datos local
             sql_file = self.export_local_db()
             if not sql_file:
-                return False
-                
-            # 2. Reemplazar URLs (de local a remoto)
-            processed_file = self.search_replace_urls(sql_file, reverse=True)
-            if not processed_file:
+                # Revertir los cambios de URL antes de salir
+                print("🔄 Revirtiendo cambios de URL...")
+                try:
+                    # Restablecer cada patrón que reemplazamos
+                    for target, source in replacements:  # Invertir el orden aquí
+                        run_wp_cli(
+                            ["search-replace", source, target, "--all-tables", "--precise", "--skip-columns=guid"],
+                            self.local_path.parent,
+                            remote=False,
+                            use_ddev=True
+                        )
+                except:
+                    print("⚠️ No se pudieron revertir los cambios de URL")
                 return False
                 
             # 3. Importar a remoto
-            success = self.import_to_remote(processed_file)
+            success = self.import_to_remote(sql_file)
             
-            # 4. Limpiar archivos temporales
+            # 4. Revertir los cambios de URL en la base de datos local
+            print("🔄 Restaurando URLs en la base de datos local...")
+            try:
+                # Restablecer cada patrón que reemplazamos
+                for target, source in replacements:  # Invertir el orden aquí
+                    run_wp_cli(
+                        ["search-replace", source, target, "--all-tables", "--precise", "--skip-columns=guid"],
+                        self.local_path.parent,
+                        remote=False,
+                        use_ddev=True
+                    )
+                print("✅ URLs locales restauradas")
+            except:
+                print("⚠️ No se pudieron restaurar las URLs locales")
+            
+            # 5. Limpiar archivos temporales
             try:
                 os.unlink(sql_file)
-                os.unlink(processed_file)
             except:
                 pass
                 

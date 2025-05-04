@@ -403,13 +403,13 @@ class FileSynchronizer:
         
     def _check_protected_files(self, direction: str) -> bool:
         """
-        Verifica si hay archivos protegidos que podrían ser sobrescritos
+        Verifica si hay archivos protegidos e informa que serán excluidos
         
         Args:
             direction: Dirección de la sincronización ("from-remote" o "to-remote")
             
         Returns:
-            bool: True si es seguro continuar, False en caso contrario
+            bool: Siempre retorna True (los archivos protegidos serán excluidos)
         """
         if not self.protected_files:
             return True
@@ -417,7 +417,7 @@ class FileSynchronizer:
         protected_at_risk = []
         
         if direction == "from-remote":
-            # Comprobando archivos locales protegidos que podrían ser sobrescritos
+            # Identificar archivos locales protegidos
             for file_pattern in self.protected_files:
                 full_path = self.local_path / file_pattern
                 
@@ -432,28 +432,23 @@ class FileSynchronizer:
                     protected_at_risk.append(file_pattern)
                     
         else:  # to-remote
-            # Para subir archivos, simplemente advertir sobre todos los archivos protegidos
+            # Para subir archivos, identificar todos los archivos protegidos
             protected_at_risk = self.protected_files
             
         if protected_at_risk:
-            print("\n⚠️ ADVERTENCIA: Se han detectado archivos protegidos que podrían ser sobrescritos:")
+            print("\nℹ️ Los siguientes archivos protegidos serán excluidos de la sincronización:")
             for file in protected_at_risk:
                 print(f"  - {file}")
                 
-            # Solicitar confirmación explícita
-            confirm = input("\n¿Deseas continuar a pesar de los archivos protegidos? (escriba 'si' para confirmar): ")
-            
-            if confirm.lower() != "si":
-                print("❌ Operación cancelada para proteger archivos.")
-                return False
-                
-            print("⚡ Confirmación recibida. Procediendo con la operación...")
-            
+        # Siempre retornamos True porque los archivos protegidos serán excluidos
         return True
         
     def _clean_excluded_files(self, direction: str) -> bool:
         """
         Limpia archivos excluidos en el destino después de la sincronización
+        
+        Los archivos que están tanto en exclusiones como en protected_files
+        no serán eliminados durante la limpieza.
         
         Args:
             direction: Dirección de la sincronización ("from-remote" o "to-remote")
@@ -478,6 +473,28 @@ class FileSynchronizer:
         
         # Procesar cada patrón de exclusión
         for category, pattern in exclusions.items():
+            # Verificar si el patrón está en protected_files - si es así, saltarlo
+            if self.protected_files and pattern in self.protected_files:
+                print(f"🛡️ No se eliminará la exclusión protegida: {pattern}")
+                continue
+                
+            # También verificar si el patrón coincide con algún patrón de protected_files
+            is_protected = False
+            if self.protected_files:
+                for protected_pattern in self.protected_files:
+                    # Considerar patrones con y sin barra al final
+                    pattern_base = pattern.rstrip('/')
+                    protected_base = protected_pattern.rstrip('/')
+                    
+                    # Verificar coincidencia exacta o si el patrón es subdirectorio de uno protegido
+                    if pattern_base == protected_base or pattern_base.startswith(f"{protected_base}/"):
+                        print(f"🛡️ No se eliminará la exclusión protegida: {pattern}")
+                        is_protected = True
+                        break
+                        
+            if is_protected:
+                continue
+                
             # Convertir a Path y comprobar si existe
             if pattern.endswith('/'):
                 # Es un directorio
@@ -496,6 +513,21 @@ class FileSynchronizer:
                     # Patrón con comodín
                     matches = list(self.local_path.glob(pattern))
                     for match in matches:
+                        # Verificar si el archivo está protegido
+                        rel_path_str = str(match.relative_to(self.local_path))
+                        is_file_protected = False
+                        
+                        if self.protected_files:
+                            for protected_pattern in self.protected_files:
+                                protected_base = protected_pattern.rstrip('/')
+                                if rel_path_str == protected_base or rel_path_str.startswith(f"{protected_base}/"):
+                                    is_file_protected = True
+                                    break
+                                    
+                        if is_file_protected:
+                            print(f"🛡️ No se eliminará el archivo protegido: {rel_path_str}")
+                            continue
+                            
                         try:
                             if match.is_file():
                                 match.unlink()
@@ -530,6 +562,9 @@ class FileSynchronizer:
         """
         Sincroniza archivos entre el servidor remoto y el entorno local
         
+        Los archivos listados en protected_files se excluyen automáticamente de la sincronización.
+        Implementa el patrón "fail fast": falla inmediatamente ante errores críticos y no intenta adivinar valores.
+        
         Args:
             direction: Dirección de la sincronización ("from-remote" o "to-remote")
             dry_run: Si es True, no realiza cambios reales
@@ -537,7 +572,22 @@ class FileSynchronizer:
             
         Returns:
             bool: True si la sincronización fue exitosa, False en caso contrario
+        
+        Raises:
+            RuntimeError: Si se encuentra un error crítico que impide la sincronización
         """
+        # Verificar que tenemos configuración adecuada antes de comenzar
+        if not self.remote_host or not self.remote_path or not self.local_path:
+            error_msg = "❌ Error: Configuración SSH incompleta. Verifique las siguientes claves en sites.yaml:\n"
+            if not self.remote_host:
+                error_msg += "   - ssh.remote_host: Servidor remoto\n"
+            if not self.remote_path:
+                error_msg += "   - ssh.remote_path: Ruta en el servidor remoto\n"
+            if not self.local_path:
+                error_msg += "   - ssh.local_path: Ruta local\n"
+            print(error_msg)
+            return False
+            
         if direction == "from-remote":
             print(f"📥 Sincronizando archivos desde el servidor remoto al entorno local...")
         else:
@@ -558,9 +608,16 @@ class FileSynchronizer:
                 print("⚡ Confirmación recibida. Procediendo con la operación...")
                 print("")
         
-        # Verificar archivos protegidos
-        if not dry_run and not self._check_protected_files(direction):
+        # Verificar que los archivos protegidos están definidos
+        if not self.protected_files:
+            print("❌ Error: No hay archivos protegidos definidos en la configuración")
+            print("   Es peligroso sincronizar sin proteger archivos críticos como wp-config.php")
+            print("   Asegúrese de que la sección 'protected_files' esté definida en config.yaml")
             return False
+        
+        # Identificar e informar sobre archivos protegidos que serán excluidos
+        if not dry_run:
+            self._check_protected_files(direction)
         
         # Verificar conexión
         if not self.check_remote_connection():
@@ -597,11 +654,13 @@ class FileSynchronizer:
             # Opcionalmente, crear una copia de seguridad
             if self.config.get("security", "backups") == "enabled":
                 print("📦 Creando copia de seguridad del entorno local...")
-                backup_path = create_backup(self.local_path)
+                # Pasar el objeto de configuración para obtener los archivos protegidos
+                backup_path = create_backup(self.local_path, config=self.config)
                 if backup_path:
                     print(f"✅ Copia de seguridad creada en {backup_path}")
                 else:
                     print("⚠️ No se pudo crear copia de seguridad")
+                    # No es un error crítico, se puede continuar
             
         # Ejecutar rsync
         success, output = run_rsync(
@@ -633,6 +692,8 @@ class FileSynchronizer:
     def _fix_local_config(self):
         """
         Arregla configuración local después de sincronizar desde remoto
+        
+        Implementa el patrón "fail fast": falla inmediatamente si faltan recursos críticos
         """
         # Ajustar wp-config.php para DDEV si es necesario
         wp_config_path = self.local_path / "wp-config.php"
@@ -642,15 +703,21 @@ class FileSynchronizer:
             print("🔍 Verificando que wp-config.php incluya la configuración DDEV...")
             
             # Leer el archivo
-            with open(wp_config_path, 'r') as f:
-                content = f.read()
+            try:
+                with open(wp_config_path, 'r') as f:
+                    content = f.read()
+            except Exception as e:
+                print(f"❌ Error al leer wp-config.php: {str(e)}")
+                return False
                 
             # Verificar si ya incluye la configuración DDEV
             if "wp-config-ddev.php" not in content:
                 print("⚙️ Corrigiendo wp-config.php para incluir configuración DDEV...")
                 
                 # Hacer una copia de seguridad
-                create_backup(wp_config_path)
+                backup_result = create_backup(wp_config_path, config=self.config)
+                if not backup_result:
+                    print("⚠️ No se pudo crear copia de seguridad de wp-config.php. Continuando de todos modos...")
                 
                 # Código para incluir DDEV
                 ddev_config = (
@@ -663,16 +730,34 @@ class FileSynchronizer:
                 )
                 
                 # Añadir el código al principio del archivo
-                with open(wp_config_path, 'w') as f:
-                    f.write(ddev_config + content)
-                    
-                print("✅ wp-config.php actualizado para DDEV.")
+                try:
+                    with open(wp_config_path, 'w') as f:
+                        f.write(ddev_config + content)
+                    print("✅ wp-config.php actualizado para DDEV.")
+                except Exception as e:
+                    print(f"❌ Error al actualizar wp-config.php: {str(e)}")
+                    return False
             else:
                 print("✅ wp-config.php ya incluye la configuración DDEV.")
                 
+        return True
+        
 def sync_files(direction: str = "from-remote", dry_run: bool = False, clean: bool = True) -> bool:
     """
     Sincroniza archivos entre entornos
+    
+    Los archivos listados en la sección protected_files de la configuración
+    se excluyen automáticamente de la sincronización para proteger archivos
+    críticos como wp-config.php y otros. Estos archivos también están protegidos
+    de la eliminación durante la fase de limpieza posterior a la sincronización.
+    
+    Para proteger tanto archivos excluidos como plugins de desarrollo local, 
+    asegúrese de incluirlos tanto en 'exclusions' como en 'protected_files'.
+    
+    Esta función sigue el patrón "fail fast":
+    - Falla inmediatamente si falta información crítica (como los archivos protegidos)
+    - No intenta adivinar valores predeterminados
+    - Proporciona mensajes de error específicos que indican cómo resolver el problema
     
     Args:
         direction: Dirección de la sincronización ("from-remote" o "to-remote")
@@ -682,5 +767,9 @@ def sync_files(direction: str = "from-remote", dry_run: bool = False, clean: boo
     Returns:
         bool: True si la sincronización fue exitosa, False en caso contrario
     """
-    synchronizer = FileSynchronizer()
-    return synchronizer.sync(direction=direction, dry_run=dry_run, clean=clean) 
+    try:
+        synchronizer = FileSynchronizer()
+        return synchronizer.sync(direction=direction, dry_run=dry_run, clean=clean)
+    except Exception as e:
+        print(f"❌ Error crítico durante la sincronización: {str(e)}")
+        return False 
