@@ -1,8 +1,8 @@
 """
-Módulo para sincronización de archivos entre entornos
+Module for file synchronization between environments in wp_chariot
 
-Este módulo proporciona funciones para sincronizar archivos entre
-un servidor remoto y el entorno local mediante rsync.
+This module provides functions to synchronize files between
+a remote server and the local environment using rsync.
 """
 
 import os
@@ -17,46 +17,46 @@ from utils.filesystem import ensure_dir_exists, create_backup
 
 class FileSynchronizer:
     """
-    Clase para sincronizar archivos entre entornos
+    Class for synchronizing files between environments
     """
     
     def __init__(self):
         """
-        Inicializa el sincronizador de archivos
+        Initializes the file synchronizer
         """
         self.config = get_yaml_config()
         
-        # Cargar configuración
+        # Load configuration
         self.remote_host = self.config.get("ssh", "remote_host")
         self.remote_path = self.config.get("ssh", "remote_path")
         self.local_path = Path(self.config.get("ssh", "local_path"))
         
-        # Asegurarse de que las rutas remotas terminen con /
+        # Make sure remote paths end with /
         if not self.remote_path.endswith("/"):
             self.remote_path += "/"
             
-        # Cargar exclusiones
+        # Load exclusions
         self.exclusions = self.config.get_exclusions()
         
-        # Cargar archivos protegidos
+        # Load protected files
         self.protected_files = self.config.get_protected_files()
         
     def _prepare_paths(self, direction: str) -> Tuple[str, str]:
         """
-        Prepara las rutas de origen y destino según la dirección
+        Prepares source and destination paths according to the direction
         
         Args:
-            direction: Dirección de la sincronización ("from-remote" o "to-remote")
+            direction: Synchronization direction ("from-remote" or "to-remote")
             
         Returns:
-            Tuple[str, str]: Rutas de origen y destino
+            Tuple[str, str]: Source and destination paths
         """
         if direction == "from-remote":
-            # Desde remoto a local
+            # From remote to local
             source = f"{self.remote_host}:{self.remote_path}"
             dest = str(self.local_path)
         else:
-            # Desde local a remoto
+            # From local to remote
             source = str(self.local_path)
             dest = f"{self.remote_host}:{self.remote_path}"
             
@@ -64,128 +64,128 @@ class FileSynchronizer:
         
     def check_remote_connection(self) -> bool:
         """
-        Verifica la conexión con el servidor remoto
+        Verifies the connection to the remote server
         
         Returns:
-            bool: True si la conexión es exitosa, False en caso contrario
+            bool: True if connection is successful, False otherwise
         """
-        print(f"🔄 Verificando conexión con el servidor remoto: {self.remote_host}")
+        print(f"🔄 Verifying connection with remote server: {self.remote_host}")
         
         with SSHClient(self.remote_host) as ssh:
             if not ssh.client:
                 return False
                 
-            # Verificar acceso a la ruta remota
+            # Verify access to remote path
             cmd = f"test -d {self.remote_path} && echo 'OK' || echo 'NOT_FOUND'"
             code, stdout, stderr = ssh.execute(cmd)
             
             if code != 0:
-                print(f"❌ Error al verificar ruta remota: {stderr}")
+                print(f"❌ Error verifying remote path: {stderr}")
                 return False
                 
             if "OK" not in stdout:
-                print(f"❌ La ruta remota no existe: {self.remote_path}")
+                print(f"❌ Remote path does not exist: {self.remote_path}")
                 return False
                 
-            print(f"✅ Conexión verificada con éxito")
+            print(f"✅ Connection verified successfully")
             return True
             
     def diff(self, dry_run: bool = True) -> bool:
         """
-        Muestra las diferencias entre el servidor remoto y el entorno local
+        Shows the differences between the remote server and local environment
         
         Args:
-            dry_run: Si es True, no realiza cambios reales
+            dry_run: If True, no real changes are made
             
         Returns:
-            bool: True si la sincronización fue exitosa, False en caso contrario
+            bool: True if synchronization was successful, False otherwise
         """
-        print(f"🔍 Comparando archivos entre el servidor remoto y el entorno local...")
+        print(f"🔍 Comparing files between remote server and local environment...")
         
-        # Verificar conexión
+        # Verify connection
         if not self.check_remote_connection():
             return False
             
-        # Preparar rutas (siempre desde remoto para diff)
+        # Prepare paths (always from remote for diff)
         source, dest = self._prepare_paths("from-remote")
         
-        # Obtener las exclusiones y verificar que sean un diccionario válido
+        # Get exclusions and verify they are a valid dictionary
         exclusions = self.exclusions
         if not exclusions:
-            print("ℹ️ No hay exclusiones configuradas. Usando exclusiones predeterminadas.")
+            print("ℹ️ No exclusions configured. Using default exclusions.")
             exclusions = {}
             
-        # Mostrar número de exclusiones
-        print(f"ℹ️ Se aplicarán {len(exclusions)} patrones de exclusión")
+        # Show number of exclusions
+        print(f"ℹ️ {len(exclusions)} exclusion patterns will be applied")
         
-        # Opciones de rsync para mostrar diferencias
+        # Rsync options to show differences
         options = [
-            "-avzhnc",  # archivo, verbose, compresión, human-readable, dry-run, checksum
-            "--itemize-changes",  # mostrar cambios detallados
-            "--delete",  # eliminar archivos que no existen en origen
+            "-avzhnc",  # archive, verbose, compression, human-readable, dry-run, checksum
+            "--itemize-changes",  # show detailed changes
+            "--delete",  # delete files that don't exist in source
         ]
         
-        # Ejecutar rsync en modo de comparación
+        # Run rsync in comparison mode
         success, output = run_rsync(
             source=source,
             dest=dest,
             options=options,
             exclusions=exclusions,
-            dry_run=True  # Siempre en modo simulación para diff
+            dry_run=True  # Always in simulation mode for diff
         )
         
         return success
         
     def sync(self, direction: str = "from-remote", dry_run: bool = False) -> bool:
         """
-        Sincroniza archivos entre el servidor remoto y el entorno local
+        Synchronizes files between the remote server and local environment
         
         Args:
-            direction: Dirección de la sincronización ("from-remote" o "to-remote")
-            dry_run: Si es True, no realiza cambios reales
+            direction: Synchronization direction ("from-remote" or "to-remote")
+            dry_run: If True, no real changes are made
             
         Returns:
-            bool: True si la sincronización fue exitosa, False en caso contrario
+            bool: True if synchronization was successful, False otherwise
         """
         if direction == "from-remote":
-            print(f"📥 Sincronizando archivos desde el servidor remoto al entorno local...")
+            print(f"📥 Synchronizing files from remote server to local environment...")
         else:
-            print(f"📤 Sincronizando archivos desde el entorno local al servidor remoto...")
+            print(f"📤 Synchronizing files from local environment to remote server...")
             
-            # Verificar si hay protección de producción activada
+            # Check if production safety is enabled
             if self.config.get("security", "production_safety") == "enabled":
-                print("⚠️ ADVERTENCIA: Protección de producción está activada.")
-                print("   Esta operación modificaría archivos en PRODUCCIÓN.")
+                print("⚠️ WARNING: Production safety is enabled.")
+                print("   This operation would modify files in PRODUCTION.")
                 
-                # Solicitar confirmación explícita
-                confirm = input("   ¿Estás COMPLETAMENTE SEGURO de continuar? (escriba 'si' para confirmar): ")
+                # Request explicit confirmation
+                confirm = input("   Are you COMPLETELY SURE you want to continue? (type 'yes' to confirm): ")
                 
-                if confirm.lower() != "si":
-                    print("❌ Operación cancelada por seguridad.")
+                if confirm.lower() != "yes":
+                    print("❌ Operation cancelled for safety.")
                     return False
                     
-                print("⚡ Confirmación recibida. Procediendo con la operación...")
+                print("⚡ Confirmation received. Proceeding with operation...")
                 print("")
         
-        # Verificar conexión
+        # Verify connection
         if not self.check_remote_connection():
             return False
             
-        # Preparar rutas
+        # Prepare paths
         source, dest = self._prepare_paths(direction)
         
-        # Opciones de rsync
+        # Rsync options
         options = [
-            "-avzh",  # archivo, verbose, compresión, human-readable
-            "--progress",  # mostrar progreso
-            "--delete",  # eliminar archivos que no existen en origen
+            "-avzh",  # archive, verbose, compression, human-readable
+            "--progress",  # show progress
+            "--delete",  # delete files that don't exist in source
         ]
         
-        # Si es simulación, agregar opción
+        # If simulation, add option
         if dry_run:
-            print("🔄 Ejecutando en modo simulación (no se realizarán cambios)")
+            print("🔄 Running in simulation mode (no changes will be made)")
             
-        # Ejecutar rsync
+        # Run rsync
         success, output = run_rsync(
             source=source,
             dest=dest,
@@ -194,7 +194,7 @@ class FileSynchronizer:
             dry_run=dry_run
         )
         
-        # Si la sincronización fue desde remoto a local, arreglar configuración local si es necesario
+        # If synchronization was from remote to local, fix local config if necessary
         if success and direction == "from-remote" and not dry_run:
             self._fix_local_config()
             
@@ -202,27 +202,27 @@ class FileSynchronizer:
         
     def _fix_local_config(self):
         """
-        Arregla configuración local después de sincronizar desde remoto
+        Fixes local configuration after syncing from remote
         """
-        # Ajustar wp-config.php para DDEV si es necesario
+        # Adjust wp-config.php for DDEV if necessary
         wp_config_path = self.local_path / "wp-config.php"
         wp_config_ddev_path = self.local_path / "wp-config-ddev.php"
         
         if wp_config_path.exists() and wp_config_ddev_path.exists():
-            print("🔍 Verificando que wp-config.php incluya la configuración DDEV...")
+            print("🔍 Verifying that wp-config.php includes DDEV configuration...")
             
-            # Leer el archivo
+            # Read the file
             with open(wp_config_path, 'r') as f:
                 content = f.read()
                 
-            # Verificar si ya incluye la configuración DDEV
+            # Check if it already includes DDEV configuration
             if "wp-config-ddev.php" not in content:
-                print("⚙️ Corrigiendo wp-config.php para incluir configuración DDEV...")
+                print("⚙️ Fixing wp-config.php to include DDEV configuration...")
                 
-                # Hacer una copia de seguridad
+                # Create a backup
                 create_backup(wp_config_path)
                 
-                # Código para incluir DDEV
+                # Code to include DDEV
                 ddev_config = (
                     "<?php\n"
                     "// DDEV configuration\n"
@@ -232,53 +232,53 @@ class FileSynchronizer:
                     "}\n\n"
                 )
                 
-                # Añadir el código al principio del archivo
+                # Add code to the beginning of the file
                 with open(wp_config_path, 'w') as f:
                     f.write(ddev_config + content)
                     
-                print("✅ wp-config.php actualizado para DDEV.")
+                print("✅ wp-config.php updated for DDEV.")
             else:
-                print("✅ wp-config.php ya incluye la configuración DDEV.")
+                print("✅ wp-config.php already includes DDEV configuration.")
                 
-# Clase para comandos de diferencias (más específicos que la sincronización general)
+# Class for diff commands (more specific than general synchronization)
 class DiffCommand:
     """
-    Clase para comandos específicos de diferencias
+    Class for specific difference commands
     """
     
     def __init__(self):
         """
-        Inicializa el objeto de diferencias
+        Initializes the diff object
         """
         self.synchronizer = FileSynchronizer()
         
     def show_diff(self):
         """
-        Muestra las diferencias entre el servidor remoto y el entorno local
+        Shows the differences between the remote server and local environment
         """
         return self.synchronizer.diff(dry_run=True)
         
-# Funciones de nivel módulo para facilitar su uso desde otros módulos
+# Module-level functions to facilitate use from other modules
 def sync_files(direction: str = "from-remote", dry_run: bool = False) -> bool:
     """
-    Sincroniza archivos entre entornos
+    Synchronizes files between environments
     
     Args:
-        direction: Dirección de la sincronización ("from-remote" o "to-remote")
-        dry_run: Si es True, no realiza cambios reales
+        direction: Synchronization direction ("from-remote" or "to-remote")
+        dry_run: If True, no real changes are made
         
     Returns:
-        bool: True si la sincronización fue exitosa, False en caso contrario
+        bool: True if synchronization was successful, False otherwise
     """
     synchronizer = FileSynchronizer()
     return synchronizer.sync(direction=direction, dry_run=dry_run)
     
 def show_diff() -> bool:
     """
-    Muestra las diferencias entre el servidor remoto y el entorno local
+    Shows the differences between the remote server and local environment
     
     Returns:
-        bool: True si la operación fue exitosa, False en caso contrario
+        bool: True if operation was successful, False otherwise
     """
     diff_cmd = DiffCommand()
     return diff_cmd.show_diff() 

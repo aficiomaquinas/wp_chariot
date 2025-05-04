@@ -1,7 +1,7 @@
 """
-Módulo de comandos para WordPress Deploy Tools
+Command module for wp_chariot
 
-Este módulo contiene los comandos disponibles para la herramienta de despliegue.
+This module contains the available commands for the deployment tool.
 """
 
 __all__ = ["sync", "diff", "database", "patch"] 

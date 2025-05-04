@@ -1,8 +1,8 @@
 """
-Módulo para mostrar diferencias entre entornos
+Module for showing differences between environments
 
-Este módulo proporciona funciones para mostrar las diferencias de archivos
-entre un servidor remoto y el entorno local.
+This module provides functions for displaying file differences
+between a remote server and the local environment.
 """
 
 from pathlib import Path
@@ -11,48 +11,48 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 from config_yaml import get_yaml_config
 from utils.ssh import SSHClient, run_rsync
 
-# Importar la clase FileSynchronizer después para evitar importación circular
+# Import the FileSynchronizer class afterwards to avoid circular import
 import commands.sync as sync_module
 
 class DiffCommand:
     """
-    Clase para comandos específicos de diferencias
+    Class for specific difference commands
     """
     
     def __init__(self):
         """
-        Inicializa el objeto de diferencias
+        Initializes the difference object
         """
         self.synchronizer = sync_module.FileSynchronizer()
         
     def show_diff(self, show_all: bool = False, verbose: bool = False, only_patches: bool = False) -> bool:
         """
-        Muestra las diferencias entre el servidor remoto y el entorno local.
-        Este método siempre es de solo lectura y nunca realiza cambios.
+        Shows the differences between the remote server and the local environment.
+        This method is always read-only and never makes changes.
         
         Args:
-            show_all: Si es True, muestra todos los archivos sin límite
-            verbose: Si es True, muestra información detallada
-            only_patches: Si es True, muestra solo información relacionada con parches
+            show_all: If True, shows all files without limit
+            verbose: If True, shows detailed information
+            only_patches: If True, shows only information related to patches
             
         Returns:
-            bool: True si la operación fue exitosa, False en caso contrario
+            bool: True if the operation was successful, False otherwise
         """
-        # Siempre usamos dry_run=True porque este comando es solo para mostrar diferencias
+        # We always use dry_run=True because this command is only for showing differences
         return self.synchronizer.diff(dry_run=True, show_all=show_all, verbose=verbose, only_patches=only_patches)
 
 def show_diff(show_all: bool = False, verbose: bool = False, only_patches: bool = False) -> bool:
     """
-    Muestra las diferencias entre el servidor remoto y el entorno local.
-    Esta función siempre es de solo lectura y nunca realiza cambios.
+    Shows the differences between the remote server and the local environment.
+    This function is always read-only and never makes changes.
     
     Args:
-        show_all: Si es True, muestra todos los archivos sin límite
-        verbose: Si es True, muestra información detallada
-        only_patches: Si es True, muestra solo información relacionada con parches
+        show_all: If True, shows all files without limit
+        verbose: If True, shows detailed information
+        only_patches: If True, shows only information related to patches
         
     Returns:
-        bool: True si la operación fue exitosa, False en caso contrario
+        bool: True if the operation was successful, False otherwise
     """
     diff_cmd = DiffCommand()
     return diff_cmd.show_diff(show_all=show_all, verbose=verbose, only_patches=only_patches) 

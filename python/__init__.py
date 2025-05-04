@@ -1,8 +1,9 @@
 """
-WordPress Deploy Tools
+wp_chariot
+==========
 
-Herramientas para sincronización, despliegue y gestión de parches en sitios WordPress,
-implementadas en Python para un flujo de trabajo de desarrollo eficiente.
+Spin up idempotent WordPress dev envs with one click. Sync your changes both ways conveniently. 
+Only SSH required on your server, and only DDEV and Python required on your local machine.
 """
 
 __version__ = "0.1.0"

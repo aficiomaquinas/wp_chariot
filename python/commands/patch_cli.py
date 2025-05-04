@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Herramienta de línea de comandos para gestionar parches
+Command line tool for patch management
 
-Permite gestionar parches para plugins y temas de WordPress, 
-guardando un registro de los parches aplicados.
+Allows managing patches for WordPress plugins and themes,
+keeping a record of applied patches.
 """
 
 import argparse
@@ -16,69 +16,69 @@ from commands.patch import (
 
 def parse_args(args: Optional[List[str]] = None):
     """
-    Parsea los argumentos de línea de comandos
+    Parses command line arguments
     
     Args:
-        args: Lista de argumentos (si es None, usa sys.argv)
+        args: List of arguments (if None, uses sys.argv)
         
     Returns:
-        argparse.Namespace: Argumentos parseados
+        argparse.Namespace: Parsed arguments
     """
     parser = argparse.ArgumentParser(
-        description="Gestiona parches para plugins y temas de WordPress"
+        description="Manages patches for WordPress plugins and themes"
     )
     
-    # Argumentos específicos para acciones
-    parser.add_argument("--add", metavar="FILE_PATH", help="Registra un nuevo parche")
-    parser.add_argument("--remove", metavar="FILE_PATH", help="Elimina un parche del registro")
-    parser.add_argument("--list", action="store_true", help="Lista los parches registrados")
-    parser.add_argument("--rollback", metavar="FILE_PATH", help="Revierte un parche aplicado anteriormente")
-    parser.add_argument("--info", action="store_true", help="Muestra información detallada al aplicar parches")
-    parser.add_argument("--dry-run", action="store_true", help="Muestra qué se haría sin realizar cambios reales")
-    parser.add_argument("--description", metavar="DESC", help="Descripción del parche (para usar con --add)")
-    parser.add_argument("--force", action="store_true", help="Forzar aplicación del parche incluso si las versiones no coinciden")
+    # Specific arguments for actions
+    parser.add_argument("--add", metavar="FILE_PATH", help="Registers a new patch")
+    parser.add_argument("--remove", metavar="FILE_PATH", help="Removes a patch from registry")
+    parser.add_argument("--list", action="store_true", help="Lists registered patches")
+    parser.add_argument("--rollback", metavar="FILE_PATH", help="Reverts a previously applied patch")
+    parser.add_argument("--info", action="store_true", help="Shows detailed information when applying patches")
+    parser.add_argument("--dry-run", action="store_true", help="Shows what would be done without making actual changes")
+    parser.add_argument("--description", metavar="DESC", help="Patch description (to use with --add)")
+    parser.add_argument("--force", action="store_true", help="Force patch application even if versions don't match")
     
-    # Argumento posicional para el archivo a parchar
-    parser.add_argument("file_path", nargs="?", help="Ruta relativa al archivo a parchar")
+    # Positional argument for the file to patch
+    parser.add_argument("file_path", nargs="?", help="Relative path to the file to patch")
     
     return parser.parse_args(args)
 
 def main(args: Optional[List[str]] = None) -> int:
     """
-    Punto de entrada principal para el CLI
+    Main entry point for the CLI
     
     Args:
-        args: Lista de argumentos (si es None, usa sys.argv)
+        args: List of arguments (if None, uses sys.argv)
         
     Returns:
-        int: Código de salida (0 si éxito, no cero en caso de error)
+        int: Exit code (0 if success, non-zero in case of error)
     """
     args = parse_args(args)
     
-    # Procesar comandos
+    # Process commands
     if args.list:
-        # Listar parches
+        # List patches
         list_patches()
         return 0
         
     elif args.add:
-        # Agregar parche
+        # Add patch
         description = args.description or ""
         success = add_patch(args.add, description)
         return 0 if success else 1
         
     elif args.remove:
-        # Eliminar parche
+        # Remove patch
         success = remove_patch(args.remove)
         return 0 if success else 1
         
     elif args.rollback:
-        # Revertir parche
+        # Rollback patch
         success = rollback_patch(args.rollback, args.dry_run)
         return 0 if success else 1
         
     elif args.file_path:
-        # Aplicar parche específico
+        # Apply specific patch
         success = apply_patch(
             args.file_path, 
             args.dry_run, 
@@ -88,9 +88,9 @@ def main(args: Optional[List[str]] = None) -> int:
         return 0 if success else 1
         
     else:
-        # Aplicar todos los parches
+        # Apply all patches
         success = apply_patch(
-            None,  # None indica aplicar todos los parches
+            None,  # None indicates to apply all patches
             args.dry_run,
             args.info,
             args.force

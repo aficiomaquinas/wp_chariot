@@ -1,8 +1,8 @@
 """
-Módulo de configuración para wp_deploy
+Configuration module for wp_deploy
 
-Este módulo se encarga de cargar y gestionar la configuración
-desde archivos .env y variables de entorno.
+This module is responsible for loading and managing configuration
+from .env files and environment variables.
 """
 
 import os
@@ -13,38 +13,38 @@ from dotenv import load_dotenv
 
 class Config:
     """
-    Clase para manejar la configuración del sistema.
-    Carga variables desde archivos .env y proporciona acceso a ellas.
+    Class to handle system configuration.
+    Loads variables from .env files and provides access to them.
     """
     
     def __init__(self, project_root: Optional[Path] = None):
         """
-        Inicializa el objeto de configuración.
+        Initializes the configuration object.
         
         Args:
-            project_root: Ruta raíz del proyecto. Si es None, se detecta automáticamente.
+            project_root: Project root path. If None, it is automatically detected.
         """
-        # Definir el directorio raíz del proyecto
+        # Define the project root directory
         if project_root is None:
-            # Intentar detectar la raíz del proyecto
+            # Try to detect the project root
             self.project_root = self._detect_project_root()
         else:
             self.project_root = project_root
             
-        # Directorio de herramientas de despliegue
+        # Deployment tools directory
         self.deploy_tools_dir = self.project_root / "deploy-tools"
         
-        # Configuración predeterminada
+        # Default configuration
         self.config: Dict[str, Any] = {
-            # Configuración SSH
+            # SSH Configuration
             "REMOTE_SSH": "server",
             "REMOTE_PATH": "/home/user/webapps/wordpress/",
             "LOCAL_PATH": str(self.project_root / "app" / "public"),
             
-            # Configuración de seguridad
+            # Security Configuration
             "PRODUCTION_SAFETY": "enabled",
             
-            # Configuración de base de datos
+            # Database Configuration
             "REMOTE_DB_NAME": "",
             "REMOTE_DB_USER": "",
             "REMOTE_DB_PASS": "",
@@ -55,60 +55,60 @@ class Config:
             "LOCAL_URL": "https://example.ddev.site",
         }
         
-        # Cargar la configuración
+        # Load configuration
         self._load_config()
         
     def _detect_project_root(self) -> Path:
         """
-        Detecta la raíz del proyecto WordPress.
-        Busca hacia arriba en el árbol de directorios hasta encontrar 
-        un directorio que contenga una carpeta deploy-tools.
+        Detects the WordPress project root.
+        Searches up the directory tree until finding
+        a directory containing a deploy-tools folder.
         
         Returns:
-            Path: Ruta a la raíz del proyecto
+            Path: Path to the project root
         """
         current_dir = Path.cwd()
         
-        # Buscar hacia arriba en el árbol de directorios
+        # Search up the directory tree
         while current_dir != current_dir.parent:
-            # Verificar si el directorio actual contiene deploy-tools
+            # Check if the current directory contains deploy-tools
             if (current_dir / "deploy-tools").exists():
                 return current_dir
                 
-            # Subir un nivel
+            # Go up one level
             current_dir = current_dir.parent
             
-        # Si no se encuentra, usar el directorio actual
-        print("⚠️ No se pudo detectar la raíz del proyecto. Usando directorio actual.")
+        # If not found, use the current directory
+        print("⚠️ Could not detect the project root. Using current directory.")
         return Path.cwd()
         
     def _load_config(self):
         """
-        Carga la configuración desde los archivos .env
+        Loads configuration from .env files
         """
-        # Cargar deploy-tools.env primero
+        # Load deploy-tools.env first
         deploy_tools_env = self.deploy_tools_dir / "deploy-tools.env"
         if deploy_tools_env.exists():
-            print(f"📝 Cargando configuración desde {deploy_tools_env}")
+            print(f"📝 Loading configuration from {deploy_tools_env}")
             load_dotenv(deploy_tools_env)
             
-            # Verificar si se especifica una ruta personalizada para el archivo .env
+            # Check if a custom path for the .env file is specified
             project_env_path = os.getenv("PROJECT_ENV_PATH")
             if project_env_path:
                 env_path = self.deploy_tools_dir / project_env_path
                 if env_path.exists():
-                    print(f"📝 Cargando configuración desde {env_path}")
+                    print(f"📝 Loading configuration from {env_path}")
                     load_dotenv(env_path)
                 else:
-                    print(f"⚠️ No se encontró el archivo .env especificado: {env_path}")
+                    print(f"⚠️ Specified .env file not found: {env_path}")
         
-        # Intentar cargar .env en la raíz del proyecto
+        # Try to load .env from the project root
         project_env = self.project_root / ".env"
         if project_env.exists():
-            print(f"📝 Cargando configuración desde {project_env}")
+            print(f"📝 Loading configuration from {project_env}")
             load_dotenv(project_env)
             
-        # Actualizar la configuración con las variables de entorno cargadas
+        # Update configuration with loaded environment variables
         for key in self.config.keys():
             env_value = os.getenv(key)
             if env_value is not None:
@@ -116,42 +116,42 @@ class Config:
                 
     def get(self, key: str, default: Any = None) -> Any:
         """
-        Obtiene un valor de configuración.
+        Gets a configuration value.
         
         Args:
-            key: Clave de configuración
-            default: Valor predeterminado si no se encuentra la clave
+            key: Configuration key
+            default: Default value if key is not found
             
         Returns:
-            El valor de configuración o el valor predeterminado
+            The configuration value or default value
         """
         return self.config.get(key, default)
         
     def __getitem__(self, key: str) -> Any:
         """
-        Permite acceder a la configuración mediante la sintaxis de índice:
+        Allows accessing configuration using index syntax:
         config["REMOTE_SSH"]
         
         Args:
-            key: Clave de configuración
+            key: Configuration key
             
         Returns:
-            El valor de configuración
+            The configuration value
             
         Raises:
-            KeyError: Si la clave no existe
+            KeyError: If the key doesn't exist
         """
         if key in self.config:
             return self.config[key]
-        raise KeyError(f"Clave de configuración no encontrada: {key}")
+        raise KeyError(f"Configuration key not found: {key}")
         
     def display(self):
         """
-        Muestra la configuración actual
+        Displays the current configuration
         """
-        print("\n🔧 Configuración cargada:")
+        print("\n🔧 Loaded configuration:")
         for key, value in self.config.items():
-            # Ocultar contraseñas
+            # Hide passwords
             if "PASS" in key or "PASSWORD" in key:
                 display_value = "********"
             else:
@@ -159,16 +159,16 @@ class Config:
             print(f"   - {key}: {display_value}")
         print()
         
-# Instancia global de configuración
+# Global configuration instance
 _config: Optional[Config] = None
 
 def get_config() -> Config:
     """
-    Obtiene la instancia global de configuración.
-    Si aún no existe, la crea.
+    Gets the global configuration instance.
+    If it doesn't exist yet, creates it.
     
     Returns:
-        Config: Instancia de configuración
+        Config: Configuration instance
     """
     global _config
     if _config is None:

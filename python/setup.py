@@ -4,14 +4,14 @@ with open("requirements.txt", "r") as f:
     requirements = f.read().splitlines()
 
 setup(
-    name="wp-deploy-tools",
+    name="wp_chariot",
     version="0.1.0",
     packages=["commands", "utils", "sync", "tools"],
     include_package_data=True,
     install_requires=requirements,
     entry_points={
         'console_scripts': [
-            'wp-deploy=cli:main',
+            'wp_chariot=cli:main',
         ],
     },
     author="Victor Gonzalez",

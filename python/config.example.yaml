@@ -1,73 +1,70 @@
-# Configuración global para WordPress Deploy Tools
-# Este es un archivo de ejemplo. Copia a config.yaml y personaliza.
+# Global configuration for WordPress Deploy Tools
+# This is an example file. Copy to config.yaml and customize.
 # 
-# NOTA IMPORTANTE: Este archivo contiene solo configuración global que
-# se aplica a todos los sitios. Para configurar sitios específicos,
-# utilice el archivo sites.yaml.
+# IMPORTANT NOTE: This file contains only global configuration that
+# applies to all sites. For site-specific configuration,
+# use the sites.yaml file.
 #
-# Flujo de trabajo con múltiples sitios:
-# 1. Configuración global aquí en config.yaml
-# 2. Sitios específicos en sites.yaml
-# 3. Para usar: python cli.py [comando] --site [alias-sitio]
+# Configuration recommendations:
+# 1. Global configuration here in config.yaml
+# 2. Site-specific configuration in sites.yaml
+# 3. For use: python cli.py [command] --site [site-alias]
 
-# Ajustes WP-CLI globales
+# WP-CLI configuration
 wp_cli:
-  memory_limit: "512M"  # Límite de memoria para PHP en WP-CLI
+  memory_limit: "512M"  # PHP memory limit for WP-CLI operations
 
-# Parámetros de seguridad por defecto
+# Security configuration
 security:
-  production_safety: "enabled"  # Protección contra sobrescritura en producción
-  backups: "enabled"  # Crear backups automáticos antes de operaciones peligrosas
+  production_safety: "enabled"  # Protection against accidentally overwriting production
+  backups: "enabled"  # Always create backups before critical operations
 
-# Configuración de parches y sincronización
-patches:
-  exclusions_mode: "local-only"  # Cómo manejar parches durante la sincronización:
-                                 # "local-only": Excluir parches cuando se sincroniza desde remoto a local
-                                 # "both-ways": Excluir parches en ambas direcciones
-                                 # "remote-only": Excluir parches cuando se sincroniza desde local a remoto
-                                 # "disabled": No excluir parches automáticamente
+# Patch and synchronization configuration
+sync:
+  allow_empty_diff: true  # Allow continuing even with empty diff (CURRENTLY IGNORED)
+  allow_deletions: false  # Whether to allow deletions during synchronization (dangerous) (CURRENTLY IGNORED)
+  check_conflicts: true   # Always check for conflicts with local changes (CURRENTLY IGNORED)
 
-# Exclusiones por defecto (se pueden sobrescribir por sitio)
+# Default exclusions (are merged with site-specific exclusions)
 exclusions:
-  # Directorios de caché y optimización
-  cache: "wp-content/cache/"
-  litespeed: "wp-content/litespeed/"
-  jetpack-waf: "wp-content/jetpack-waf/"
-  wflogs: "wp-content/wflogs/"
+  # Cache and optimization directories
+  litespeed: "wp-content/litespeed/*"
+  cache: "wp-content/cache/*"
+  wpsc-cache: "wp-content/wp-super-cache/*"
+  w3c: "wp-content/w3tc-cache/*"
   
-  # Archivos de caché y configuración
-  object-cache: "wp-content/object-cache.php"
+  # Cache and configuration files
+  autoptimize: "wp-content/autoptimize/*"
   
-  # Plugins de caché y optimización
-  akismet: "wp-content/plugins/akismet/"
-  wordfence: "wp-content/plugins/wordfence/"
-  litespeed-cache: "wp-content/plugins/litespeed-cache/"
+  # Security plugins (to avoid conflicts)
+  wordfence: "wp-content/wflogs/*"
   
-  # Media (por defecto no sincronizar uploads)
-  default-themes: "wp-content/themes/twenty*"
-  uploads-by-year: "wp-content/uploads/[0-9][0-9][0-9][0-9]/"
+  # Logs and temporary files
+  debug.log: "wp-content/debug.log"
+  debug: "wp-content/debug/*"
+  
+  # Backup files
+  backup_files: "**/*.bak"
 
-  # Debug y desarrollo
-  debug-logs: "wp-content/debug.log*"
-
-# Archivos protegidos por defecto
+# Protected files by default
 protected_files:
   - "wp-config.php"
   - "wp-config-ddev.php"
   - ".gitignore"
-  - ".ddev/"
+  - ".ddev/**/*"
+  - "wp-content/plugins/wp-original-media-path/"
 
 # -------------------------------------------------------------------------
-# EJEMPLO DE CONFIGURACIÓN DE SITIO (para sites.yaml)
-# Este es un ejemplo de cómo debería verse su sites.yaml
+# EXAMPLE SITE CONFIGURATION (for sites.yaml)
+# This is an example of how your sites.yaml should look like
 # -------------------------------------------------------------------------
 #
-# default: "ejemplo-sitio"  # Sitio predeterminado (opcional)
+# default: "ejemplo-sitio"  # Default site (optional)
 #
 # sites:
 #   ejemplo-sitio:
 #     ssh:
-#       remote_host: "example-host"  # Alias SSH en ~/.ssh/config
+#       remote_host: "example-host"  # SSH alias in ~/.ssh/config
 #       remote_path: "/path/to/remote/wordpress/"
 #       local_path: "/path/to/local/wordpress/"
 #

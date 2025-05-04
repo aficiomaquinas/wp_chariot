@@ -5,7 +5,7 @@
 # wp_chariot
 
 Spin up idempotent Wordpress dev envs with one click. Sync your changes both ways conveniently. Only SSH required on your server, and only DDEV and Python required on your local machine.
- **PRE-RELEASE: Don't use on important stuff until it gets tested by more people. But syncing to local (from-remote) should be pretty safe, though.**
+ **PRE-RELEASE: Don't use on important stuff until it gets tested by more people.**
 
 ## The Problem wp_chariot Solves: Your Time Is Valuable
 
@@ -68,18 +68,27 @@ python cli.py init --with-db --with-media --site mysitedotcom
 #   Use WP-Original-Media-Path plugin to use the uploads folder from production and save the trouble of serving media from local.
     python cli.py media-path --site mysitedotcom
 
-# Ready to develop! No gigabytes of media, with all plugins
-# and the same database as in production, without our excluded plugins/themes/files
+# Ready to develop! No gigabytes of media, without our excluded plugins/themes/files
+# and the cloned database from production (with urls replaced).
 ```
 
 3. **Secure patch application**
 
 ```bash
-# Register a patch for a problematic plugin
-python cli.py patch --add wp-content/plugins/woocommerce/templates/checkout.php --site mysitedotcom
+# suppose we are debugging or patching a security problem of a third-party plugin
+vim ~/mysite/wp-content/plugins/problematicvendor/theirplugin/compromised.php
 
-# Edit locally, test, and when ready...
+# Register a patch for a problematic plugin, notice the path is relative to the wp install, not absolute
+python cli.py patch --add wp-content/plugins/problematicvendor/theirplugin/compromised.php --site mysitedotcom
+
+# get the files diff's from your productive server using rsync --dry-mode along with your exclusions, no need to git track your whole wp install!
+python cli.py diff --site mysitedotcom
+
+# and when ready commit to production
 python cli.py patch-commit --site mysitedotcom
+
+# get the status of the patches comparing local and remote versions
+python cli.py patch --list
 ```
 
 ### Example Configuration Files

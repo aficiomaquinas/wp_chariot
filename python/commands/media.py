@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Módulo para la configuración de rutas de medios en WordPress
+Module for configuring media paths in WordPress
 
-Este módulo proporciona funciones para configurar la ruta de uploads en WordPress
-mediante el plugin 'WP Original Media Path'.
+This module provides functions to configure the uploads path in WordPress
+using the 'WP Original Media Path' plugin.
 """
 
 import os
@@ -24,11 +24,11 @@ from utils.wp_cli import (
 )
 from config_yaml import get_yaml_config, get_nested
 
-# Plugin requerido para medios originales
+# Required plugin for original media
 MEDIA_PLUGIN = "wp-original-media-path"
 MEDIA_PLUGIN_URL = "https://downloads.wordpress.org/plugin/wp-original-media-path.latest-stable.zip"
 
-# Límite de memoria para WP-CLI
+# Memory limit for WP-CLI
 WP_CLI_MEMORY_LIMIT = "256M"
 
 def configure_media_path(
@@ -39,64 +39,64 @@ def configure_media_path(
     verbose: bool = False
 ) -> bool:
     """
-    Configura la ruta de medios en WordPress
+    Configures the media path in WordPress
     
     Args:
-        media_url: IGNORADO - Se usa el valor de config.yaml
-        expert_mode: Indica si se debe activar el modo experto (desde config.yaml)
-        media_path: IGNORADO - Se usa el valor de config.yaml
-        remote: Aplicar en el servidor remoto en lugar de localmente
-        verbose: Mostrar información detallada
+        media_url: IGNORED - The value from config.yaml is used
+        expert_mode: Indicates if expert mode should be activated (from config.yaml)
+        media_path: IGNORED - The value from config.yaml is used
+        remote: Apply on the remote server instead of locally
+        verbose: Show detailed information
         
     Returns:
-        bool: True si la configuración se completó correctamente, False en caso contrario
+        bool: True if the configuration was completed successfully, False otherwise
     """
-    # Cargar configuración
+    # Load configuration
     config = get_yaml_config()
     local_path = Path(get_nested(config, "ssh", "local_path"))
     remote_host = get_nested(config, "ssh", "remote_host")
     remote_path = get_nested(config, "ssh", "remote_path")
     
-    # Obtener ruta dentro del contenedor DDEV - exigir explícitamente los dos parámetros
-    # Fail fast: sin compatibilidad con formatos antiguos
+    # Get path inside DDEV container - explicitly require the two parameters
+    # Fail fast: no compatibility with old formats
     base_path = get_nested(config, "ddev", "base_path")
     docroot = get_nested(config, "ddev", "docroot")
     
     if not base_path or not docroot:
-        print("❌ Error: Configuración DDEV incompleta en sites.yaml")
-        print("   Se requieren ambos parámetros:")
-        print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
-        print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
+        print("❌ Error: Incomplete DDEV configuration in sites.yaml")
+        print("   Both parameters are required:")
+        print("   - ddev.base_path: Base path inside the container (e.g. \"/var/www/html\")")
+        print("   - ddev.docroot: Docroot directory (e.g. \"app/public\")")
         return False
         
-    # Construir la ruta completa usando los dos parámetros
+    # Build the full path using the two parameters
     ddev_wp_path = f"{base_path}/{docroot}"
     
     if verbose:
-        print(f"ℹ️ Usando ruta WordPress: {ddev_wp_path}")
+        print(f"ℹ️ Using WordPress path: {ddev_wp_path}")
     
-    # SIEMPRE obtener los valores desde la configuración
+    # ALWAYS get values from the configuration
     media_url = get_nested(config, "media", "url", "")
     if not media_url:
-        print("⚠️ No se encontró URL de medios en la configuración")
-        print("   Configure 'media.url' en config.yaml")
-        print("   Ejemplo: url: \"https://media.tudominio.com\"")
-        print("   Sin URL de medios, se usará la URL predeterminada de WordPress")
+        print("⚠️ No media URL found in configuration")
+        print("   Configure 'media.url' in config.yaml")
+        print("   Example: url: \"https://media.yourdomain.com\"")
+        print("   Without a media URL, the default WordPress URL will be used")
     
-    # Usar el modo experto según la configuración
+    # Use expert mode according to configuration
     expert_mode = get_nested(config, "media", "expert_mode", False)
     media_path = None
     if expert_mode:
         media_path = get_nested(config, "media", "path", "")
         if not media_path:
-            print("⚠️ Modo experto activado pero no se configuró ruta física")
-            print("   Configure 'media.path' en config.yaml")
-            print("   Ejemplo: path: \"/ruta/absoluta/a/uploads\"")
+            print("⚠️ Expert mode enabled but no physical path configured")
+            print("   Configure 'media.path' in config.yaml")
+            print("   Example: path: \"/absolute/path/to/uploads\"")
     
-    # Si estamos en entorno local, verificar y asegurar que DDEV esté en ejecución
+    # If we are in local environment, verify and ensure that DDEV is running
     if not remote:
         try:
-            print("🔍 Verificando estado de DDEV...")
+            print("🔍 Verifying DDEV status...")
             ddev_status = subprocess.run(
                 ["ddev", "status"],
                 cwd=local_path.parent,
@@ -104,7 +104,7 @@ def configure_media_path(
                 text=True
             )
             if "running" not in ddev_status.stdout.lower():
-                print("⚠️ DDEV no está en ejecución. Iniciando DDEV automáticamente...")
+                print("⚠️ DDEV is not running. Starting DDEV automatically...")
                 try:
                     start_process = subprocess.run(
                         ["ddev", "start"],
@@ -113,45 +113,45 @@ def configure_media_path(
                         text=True
                     )
                     if start_process.returncode == 0:
-                        print("✅ DDEV iniciado correctamente")
-                        # Añadir pausa para asegurar que DDEV esté completamente listo
-                        print("⏳ Esperando 5 segundos para asegurar que DDEV esté completamente iniciado...")
+                        print("✅ DDEV started correctly")
+                        # Add pause to ensure DDEV is fully ready
+                        print("⏳ Waiting 5 seconds to ensure DDEV is fully started...")
                         time.sleep(5)
                     else:
-                        print(f"⚠️ No se pudo iniciar DDEV: {start_process.stderr}")
-                        print("   Continuando de todos modos, pero pueden producirse errores...")
+                        print(f"⚠️ Could not start DDEV: {start_process.stderr}")
+                        print("   Continuing anyway, but errors may occur...")
                 except Exception as e:
-                    print(f"⚠️ Error al intentar iniciar DDEV: {str(e)}")
-                    print("   Continuando con la instalación...")
+                    print(f"⚠️ Error when trying to start DDEV: {str(e)}")
+                    print("   Continuing with the installation...")
         except Exception as e:
-            print(f"⚠️ No se pudo verificar el estado de DDEV: {str(e)}")
-            print("   Continuando con la instalación...")
+            print(f"⚠️ Could not verify DDEV status: {str(e)}")
+            print("   Continuing with the installation...")
     
-    # Verificación de WordPress antes de continuar
-    print(f"🔍 Verificando instalación de WordPress...")
+    # WordPress verification before continuing
+    print(f"🔍 Verifying WordPress installation...")
     if verbose:
-        print(f"   Ruta local: {local_path}")
-        print(f"   Ruta en contenedor DDEV: {ddev_wp_path}")
+        print(f"   Local path: {local_path}")
+        print(f"   Path in DDEV container: {ddev_wp_path}")
     
     if not is_wordpress_installed(local_path, remote, remote_host, remote_path, True, ddev_wp_path):
-        print("⚠️ No se pudo verificar una instalación funcional de WordPress")
-        print("   Verifique que WordPress está correctamente instalado y configurado")
-        print("   Continuando de todos modos, pero pueden ocurrir errores...")
+        print("⚠️ Could not verify a functional WordPress installation")
+        print("   Verify that WordPress is correctly installed and configured")
+        print("   Continuing anyway, but errors may occur...")
     
-    print(f"🔍 Configurando WordPress para usar rutas de medios personalizadas")
+    print(f"🔍 Configuring WordPress to use custom media paths")
     if media_url:
-        print(f"   URL de medios: {media_url}")
+        print(f"   Media URL: {media_url}")
     if expert_mode and media_path:
-        print(f"   Ruta física: {media_path} (Modo Experto)")
+        print(f"   Physical path: {media_path} (Expert Mode)")
     
-    # 1. Verificar si el plugin ya está instalado
-    print(f"📋 Verificando plugin '{MEDIA_PLUGIN}'...")
+    # 1. Check if the plugin is already installed
+    print(f"📋 Checking plugin '{MEDIA_PLUGIN}'...")
     
     if is_plugin_installed(MEDIA_PLUGIN, local_path, remote, remote_host, remote_path, True, ddev_wp_path):
-        print(f"✅ Plugin '{MEDIA_PLUGIN}' ya está instalado")
+        print(f"✅ Plugin '{MEDIA_PLUGIN}' is already installed")
         
-        # Actualizar el plugin si ya está instalado
-        print(f"🔄 Actualizando plugin '{MEDIA_PLUGIN}'...")
+        # Update the plugin if it's already installed
+        print(f"🔄 Updating plugin '{MEDIA_PLUGIN}'...")
         update_result = install_plugin(
             MEDIA_PLUGIN, 
             local_path, 
@@ -163,21 +163,21 @@ def configure_media_path(
         )
         
         if update_result:
-            print(f"✅ Plugin '{MEDIA_PLUGIN}' actualizado correctamente")
+            print(f"✅ Plugin '{MEDIA_PLUGIN}' updated successfully")
         else:
-            print(f"ℹ️ No fue necesario actualizar '{MEDIA_PLUGIN}' o ocurrió un error")
+            print(f"ℹ️ Update of '{MEDIA_PLUGIN}' was not necessary or an error occurred")
     else:
-        print(f"📦 Instalando plugin '{MEDIA_PLUGIN}'...")
+        print(f"📦 Installing plugin '{MEDIA_PLUGIN}'...")
         
-        # Mostrar comando que se ejecutaría para depuración
+        # Show command that would be executed for debugging
         if not remote:
             debug_cmd = f"ddev wp plugin install {MEDIA_PLUGIN}"
         else:
             debug_cmd = f"ssh {remote_host} 'cd {remote_path} && wp plugin install {MEDIA_PLUGIN}'"
-        print(f"🔍 Comando a ejecutar: {debug_cmd}")
+        print(f"🔍 Command to execute: {debug_cmd}")
         
-        # Añadir pausa para asegurar que WordPress esté listo para instalar plugins
-        print("⏳ Asegurando que WordPress esté completamente listo...")
+        # Add pause to ensure WordPress is ready to install plugins
+        print("⏳ Ensuring WordPress is fully ready...")
         time.sleep(3)
         
         install_result = install_plugin(
@@ -191,21 +191,21 @@ def configure_media_path(
         )
         
         if not install_result:
-            print(f"❌ Error al instalar el plugin '{MEDIA_PLUGIN}'")
-            print(f"🔄 Intentando instalar desde URL: {MEDIA_PLUGIN_URL}")
+            print(f"❌ Error installing plugin '{MEDIA_PLUGIN}'")
+            print(f"🔄 Trying to install from URL: {MEDIA_PLUGIN_URL}")
             
-            # Mostrar comando que se ejecutaría para depuración
+            # Show command that would be executed for debugging
             if not remote:
                 debug_cmd = f"ddev wp plugin install {MEDIA_PLUGIN_URL}"
             else:
                 debug_cmd = f"ssh {remote_host} 'cd {remote_path} && wp plugin install {MEDIA_PLUGIN_URL}'"
-            print(f"🔍 Comando a ejecutar: {debug_cmd}")
+            print(f"🔍 Command to execute: {debug_cmd}")
             
-            # Pausa adicional antes del segundo intento
-            print("⏳ Esperando 5 segundos antes de volver a intentar...")
+            # Additional pause before the second attempt
+            print("⏳ Waiting 5 seconds before retrying...")
             time.sleep(5)
             
-            # Intentar instalar desde URL
+            # Try to install from URL
             install_result = install_plugin(
                 MEDIA_PLUGIN_URL, 
                 local_path, 
@@ -214,35 +214,35 @@ def configure_media_path(
                 remote_path,
                 True,
                 ddev_wp_path,
-                True  # Usar URL
+                True  # Use URL
             )
             
             if not install_result:
-                print(f"❌ Error al instalar el plugin '{MEDIA_PLUGIN}'")
-                print("ℹ️ Posibles soluciones:")
-                print("   1. Verifica que WordPress está correctamente instalado")
-                print("   2. Asegúrate de que DDEV está en ejecución (ddev start)")
-                print("   3. Comprueba la conectividad a Internet")
-                print("   4. Intenta instalar el plugin manualmente:")
+                print(f"❌ Error installing plugin '{MEDIA_PLUGIN}'")
+                print("ℹ️ Possible solutions:")
+                print("   1. Verify that WordPress is correctly installed")
+                print("   2. Ensure that DDEV is running (ddev start)")
+                print("   3. Check Internet connectivity")
+                print("   4. Try to install the plugin manually:")
                 if not remote:
                     print(f"      $ ddev wp plugin install {MEDIA_PLUGIN_URL}")
                 else:
                     print(f"      $ ssh {remote_host} 'cd {remote_path} && wp plugin install {MEDIA_PLUGIN_URL}'")
                 
-                print("⚠️ Continuando sin el plugin. La configuración de medios puede no funcionar correctamente.")
+                print("⚠️ Continuing without the plugin. Media configuration may not work correctly.")
                 return False
             else:
-                print(f"✅ Plugin '{MEDIA_PLUGIN}' instalado correctamente")
+                print(f"✅ Plugin '{MEDIA_PLUGIN}' installed successfully")
         else:
-            print(f"✅ Plugin '{MEDIA_PLUGIN}' instalado correctamente")
+            print(f"✅ Plugin '{MEDIA_PLUGIN}' installed successfully")
     
-    # Pausa antes de activar el plugin
-    print("⏳ Esperando 2 segundos antes de activar el plugin...")
+    # Pause before activating the plugin
+    print("⏳ Waiting 2 seconds before activating the plugin...")
     time.sleep(2)
     
-    # 2. Activar el plugin
-    print(f"🔌 Activando plugin '{MEDIA_PLUGIN}'...")
-    # Intentar activar hasta 3 veces con pequeñas pausas
+    # 2. Activate the plugin
+    print(f"🔌 Activating plugin '{MEDIA_PLUGIN}'...")
+    # Try to activate up to 3 times with small pauses
     activate_success = False
     for attempt in range(3):
         activate_result = activate_plugin(
@@ -253,28 +253,28 @@ def configure_media_path(
             remote_path,
             True,
             ddev_wp_path,
-            memory_limit=WP_CLI_MEMORY_LIMIT  # Usar límite de memoria explícito
+            memory_limit=WP_CLI_MEMORY_LIMIT  # Use explicit memory limit
         )
         
         if activate_result:
             activate_success = True
-            print(f"✅ Plugin '{MEDIA_PLUGIN}' activado correctamente")
+            print(f"✅ Plugin '{MEDIA_PLUGIN}' activated successfully")
             break
         else:
-            if attempt < 2:  # No mostrar en último intento
-                print(f"⚠️ Intento {attempt+1}/3 fallido. Reintentando...")
-                # Aumentar la pausa entre intentos
-                print(f"⏳ Esperando {(attempt+1)*3} segundos antes del siguiente intento...")
+            if attempt < 2:  # Don't show in last attempt
+                print(f"⚠️ Attempt {attempt+1}/3 failed. Retrying...")
+                # Increase pause between attempts
+                print(f"⏳ Waiting {(attempt+1)*3} seconds before next attempt...")
                 time.sleep((attempt+1) * 3)
     
     if not activate_success:
-        print(f"⚠️ No se pudo activar el plugin '{MEDIA_PLUGIN}'. Continuando de todos modos...")
-        print(f"   Es posible que necesites activarlo manualmente desde el panel de WordPress.")
-        print(f"   O revisar los errores utilizando 'wp plugin activate {MEDIA_PLUGIN} --debug'")
+        print(f"⚠️ Could not activate plugin '{MEDIA_PLUGIN}'. Continuing anyway...")
+        print(f"   It's possible you need to activate it manually from the WordPress panel.")
+        print(f"   Or review errors using 'wp plugin activate {MEDIA_PLUGIN} --debug'")
     
-    # 3. Obtener configuración actual
+    # 3. Get current configuration
     if verbose:
-        print("🔍 Configuración actual:")
+        print("🔍 Current configuration:")
         cmd = ["option", "get", "upload_url_path", "--skip-themes", "--skip-plugins"]
         code, stdout, stderr = run_wp_cli(
             cmd, 
@@ -286,9 +286,9 @@ def configure_media_path(
             ddev_wp_path,
             memory_limit=WP_CLI_MEMORY_LIMIT
         )
-        current_url = stdout.strip() if code == 0 and stdout.strip() else "No configurado"
+        current_url = stdout.strip() if code == 0 and stdout.strip() else "Not configured"
         
-        # Limpiar mensajes de error de memoria en la salida
+        # Clean memory error messages in the output
         if "Failed to set memory limit" in current_url:
             current_url = current_url.split("\n")[-1].strip()
         
@@ -303,9 +303,9 @@ def configure_media_path(
             ddev_wp_path,
             memory_limit=WP_CLI_MEMORY_LIMIT
         )
-        current_path = stdout.strip() if code == 0 and stdout.strip() else "No configurado"
+        current_path = stdout.strip() if code == 0 and stdout.strip() else "Not configured"
         
-        # Limpiar mensajes de error de memoria en la salida
+        # Clean memory error messages in the output
         if "Failed to set memory limit" in current_path:
             current_path = current_path.split("\n")[-1].strip()
         
@@ -322,17 +322,17 @@ def configure_media_path(
         )
         current_expert = stdout.strip() if code == 0 and stdout.strip() else "0"
         
-        # Limpiar mensajes de error de memoria en la salida
+        # Clean memory error messages in the output
         if "Failed to set memory limit" in current_expert:
             current_expert = current_expert.split("\n")[-1].strip()
             
-        print(f"   URL actual: {current_url}")
-        print(f"   Ruta física: {current_path}")
-        print(f"   Modo experto: {'Activado' if current_expert == '1' else 'Desactivado'}")
+        print(f"   Current URL: {current_url}")
+        print(f"   Physical path: {current_path}")
+        print(f"   Expert mode: {'Enabled' if current_expert == '1' else 'Disabled'}")
     
-    # 4. Configurar URL de medios
+    # 4. Configure media URL
     if media_url:
-        print(f"🔧 Configurando URL de medios a: {media_url}")
+        print(f"🔧 Configuring media URL to: {media_url}")
         update_option(
             "upload_url_path", 
             media_url, 
@@ -345,9 +345,9 @@ def configure_media_path(
             memory_limit=WP_CLI_MEMORY_LIMIT
         )
     
-    # 5. Configurar modo experto si se solicitó
+    # 5. Configure expert mode if requested
     if expert_mode:
-        print("⚙️ Activando modo experto para ruta personalizada")
+        print("⚙️ Activating expert mode for custom path")
         update_option(
             "owmp_expert_bool", 
             "1", 
@@ -361,7 +361,7 @@ def configure_media_path(
         )
         
         if media_path:
-            print(f"🔧 Configurando ruta física a: {media_path}")
+            print(f"🔧 Configuring physical path to: {media_path}")
             update_option(
                 "owmp_path", 
                 media_path, 
@@ -374,7 +374,7 @@ def configure_media_path(
                 memory_limit=WP_CLI_MEMORY_LIMIT
             )
     else:
-        # Asegurar que el modo experto esté desactivado
+        # Ensure that expert mode is disabled
         update_option(
             "owmp_expert_bool", 
             "0", 
@@ -387,8 +387,8 @@ def configure_media_path(
             memory_limit=WP_CLI_MEMORY_LIMIT
         )
     
-    # 6. Limpiar caché
-    print("🧹 Limpiando caché de WordPress...")
+    # 6. Clear cache
+    print("🧹 Clearing WordPress cache...")
     flush_cache(
         local_path, 
         remote, 
@@ -399,10 +399,10 @@ def configure_media_path(
         memory_limit=WP_CLI_MEMORY_LIMIT
     )
     
-    # 7. Verificar configuración final
-    print("\n📊 Configuración final:")
+    # 7. Verify final configuration
+    print("\n📊 Final configuration:")
     
-    # URL de medios
+    # Media URL
     cmd = ["option", "get", "upload_url_path", "--skip-themes", "--skip-plugins"]
     code, stdout, stderr = run_wp_cli(
         cmd, 
@@ -414,13 +414,13 @@ def configure_media_path(
         ddev_wp_path,
         memory_limit=WP_CLI_MEMORY_LIMIT
     )
-    final_url = stdout.strip() if code == 0 and stdout.strip() else "No configurado (usando valor predeterminado)"
+    final_url = stdout.strip() if code == 0 and stdout.strip() else "Not configured (using default value)"
     
-    # Limpiar mensajes de error de memoria en la salida
+    # Clean memory error messages in the output
     if "Failed to set memory limit" in final_url:
         final_url = final_url.split("\n")[-1].strip()
     
-    # Ruta física
+    # Physical path
     cmd = ["option", "get", "owmp_path", "--skip-themes", "--skip-plugins"]
     code, stdout, stderr = run_wp_cli(
         cmd, 
@@ -432,13 +432,13 @@ def configure_media_path(
         ddev_wp_path,
         memory_limit=WP_CLI_MEMORY_LIMIT
     )
-    final_path = stdout.strip() if code == 0 and stdout.strip() else "No configurado (usando valor predeterminado)"
+    final_path = stdout.strip() if code == 0 and stdout.strip() else "Not configured (using default value)"
     
-    # Limpiar mensajes de error de memoria en la salida
+    # Clean memory error messages in the output
     if "Failed to set memory limit" in final_path:
         final_path = final_path.split("\n")[-1].strip()
     
-    # Modo experto
+    # Expert mode
     cmd = ["option", "get", "owmp_expert_bool", "--skip-themes", "--skip-plugins"]
     code, stdout, stderr = run_wp_cli(
         cmd, 
@@ -450,21 +450,21 @@ def configure_media_path(
         ddev_wp_path,
         memory_limit=WP_CLI_MEMORY_LIMIT
     )
-    final_expert = "Activado" if code == 0 and stdout.strip() == "1" else "Desactivado"
+    final_expert = "Enabled" if code == 0 and stdout.strip() == "1" else "Disabled"
     
-    # Limpiar mensajes de error de memoria en la salida
+    # Clean memory error messages in the output
     if "Failed to set memory limit" in stdout:
-        final_expert = "Activado" if stdout.split("\n")[-1].strip() == "1" else "Desactivado"
+        final_expert = "Enabled" if stdout.split("\n")[-1].strip() == "1" else "Disabled"
     
-    print(f"   URL de medios: {final_url}")
-    print(f"   Ruta física: {final_path}")
-    print(f"   Modo experto: {final_expert}")
+    print(f"   Media URL: {final_url}")
+    print(f"   Physical path: {final_path}")
+    print(f"   Expert mode: {final_expert}")
     
-    print("\n✅ Configuración completada correctamente")
-    print("🔍 Los archivos de medios se buscarán ahora en la ruta configurada")
+    print("\n✅ Configuration completed successfully")
+    print("🔍 Media files will now be looked for in the configured path")
     if not remote:
-        print("\n💡 Recordatorio: Después de sincronizar la base de datos de producción")
-        print("   a desarrollo, ejecute este script para configurar las rutas de medios")
-        print("   y asegúrese de que los archivos de medios estén disponibles localmente.")
+        print("\n💡 Reminder: After synchronizing the production database")
+        print("   to development, run this script to configure media paths")
+        print("   and ensure media files are available locally.")
     
     return True 

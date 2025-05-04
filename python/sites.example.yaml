@@ -1,37 +1,37 @@
-# Ejemplo de configuración de múltiples sitios
-# Este archivo gestiona múltiples sitios WordPress con una única instalación
-# de las herramientas deploy-tools.
+# Example of multiple site configuration
+# This file manages multiple WordPress sites with a single installation
+# of the deploy-tools.
 #
-# Copia este archivo a sites.yaml y personaliza según tus necesidades.
+# Copy this file to sites.yaml and customize according to your needs.
 
-# Sitio predeterminado (opcional) - Se usa cuando no se especifica --site
-default: "misitio1"
+# Default site (optional) - Used when --site is not specified
+default: "mysite1"
 
-# Configuración de sitios individuales
+# Individual site configuration
 sites:
-  # Primer sitio
-  misitio1:
+  # First site
+  mysite1:
     ssh:
-      remote_host: "servidor1"  # Alias SSH en ~/.ssh/config
-      remote_path: "/home/user/webapps/sitio1/"
-      local_path: "/home/usuario/Proyectos/sitio1/app/public/"
+      remote_host: "server1"  # SSH alias in ~/.ssh/config
+      remote_path: "/home/user/webapps/site1/"
+      local_path: "/home/user/Projects/site1/app/public/"
 
     security:
-      production_safety: "enabled"  # enabled o disabled
+      production_safety: "enabled"  # enabled or disabled
 
     urls:
-      remote: "https://sitio1.com"
-      local: "https://sitio1.ddev.site"
+      remote: "https://site1.com"
+      local: "https://site1.ddev.site"
 
     database:
       remote:
-        name: "sitio1_db"
-        user: "sitio1_user"
-        password: "contraseña-segura"
+        name: "site1_db"
+        user: "site1_user"
+        password: "secure-password"
         host: "localhost"
 
     media:
-      url: "https://sitio1.com/wp-content/uploads/"
+      url: "https://site1.com/wp-content/uploads/"
       expert_mode: false
       path: "../media"
 
@@ -40,40 +40,40 @@ sites:
       docroot: "app/public"
 
 
-    # Puedes sobrescribir exclusiones específicas para este sitio
+    # You can override specific exclusions for this site
     exclusions:
-      custom-plugin: "wp-content/plugins/plugin-especifico-sitio1/"
-      # También puedes desactivar alguna exclusión global
-      akismet: false  # Esto sincronizará Akismet en este sitio
+      custom-plugin: "wp-content/plugins/specific-plugin-site1/"
+      # You can also disable some global exclusion
+      akismet: false  # This will synchronize Akismet on this site
 
-  # Segundo sitio
-  misitio2:
+  # Second site
+  mysite2:
     ssh:
-      remote_host: "servidor2"
-      remote_path: "/var/www/sitio2/"
-      local_path: "/home/usuario/Proyectos/sitio2/public_html/"
+      remote_host: "server2"
+      remote_path: "/var/www/site2/"
+      local_path: "/home/user/Projects/site2/public_html/"
 
     urls:
-      remote: "https://sitio2.com"
-      local: "https://sitio2.ddev.site"
+      remote: "https://site2.com"
+      local: "https://site2.ddev.site"
 
     database:
       remote:
-        name: "sitio2_db"
-        user: "sitio2_user"
-        password: "otra-contraseña-segura"
+        name: "site2_db"
+        user: "site2_user"
+        password: "another-secure-password"
         host: "localhost"
 
     media:
-      url: "https://sitio2.com/wp-content/uploads/"
-      # Puedes personalizar cada sitio según sus necesidades específicas
+      url: "https://site2.com/wp-content/uploads/"
+      # You can customize each site according to its specific needs
       expert_mode: true
-      path: "/ruta/absoluta/a/uploads"
+      path: "/absolute/path/to/uploads"
 
     ddev:
       webroot: "/var/www/html"
 
-    # Exclusiones específicas para este sitio
+    # Specific exclusions for this site
     exclusions:
-      # Aquí puedes tener diferentes exclusiones para cada sitio
-      mi-tema: "wp-content/themes/mi-tema-personalizado/" 
+      # Here you can have different exclusions for each site
+      my-theme: "wp-content/themes/my-custom-theme/" 

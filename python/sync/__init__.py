@@ -1,3 +1,3 @@
 """
-Módulos para sincronización de archivos y base de datos
+Modules for file and database synchronization in wp_chariot
 """ 

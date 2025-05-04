@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-CLI para WordPress Deploy Tools
+CLI for WordPress Deploy Tools
 
-Este script proporciona una interfaz de línea de comandos para las herramientas de despliegue.
+This script provides a command-line interface for deployment tools.
 """
 
 import os
@@ -11,12 +11,12 @@ import click
 from pathlib import Path
 import yaml
 
-# Asegurar que se puede importar el paquete wp_deploy
+# Ensure the wp_deploy package can be imported
 script_dir = Path(__file__).resolve().parent
 if script_dir not in sys.path:
     sys.path.append(str(script_dir))
 
-# Importar la nueva configuración YAML en lugar de la anterior basada en .env
+# Import YAML configuration instead of previous .env based configuration
 from config_yaml import get_yaml_config
 from commands.sync import sync_files
 from commands.diff import show_diff
@@ -25,35 +25,35 @@ from commands.patch import list_patches, apply_patch, rollback_patch, add_patch,
 from commands.media import configure_media_path
 from commands.backup import create_full_backup
 
-# Definir una opción común para el sitio
+# Define a common option for site
 site_option = click.option(
     "--site", 
-    help="Alias del sitio a operar (si hay múltiples configurados)"
+    help="Site alias to operate on (if multiple are configured)"
 )
 
-# Grupo de comandos principal
+# Main command group
 @click.group()
 @click.version_option("0.1.0")
 def cli():
     """
-    Herramientas de despliegue para WordPress.
+    Deployment tools for WordPress.
     
-    Este conjunto de comandos facilita el desarrollo, sincronización
-    y despliegue de sitios WordPress entre entornos.
+    This set of commands facilitates the development, synchronization
+    and deployment of WordPress sites between environments.
     """
     pass
 
 @cli.command("diff")
-@click.option("--all", is_flag=True, help="Mostrar todos los archivos sin límite")
-@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada durante la ejecución")
-@click.option("--patches", is_flag=True, help="Mostrar solo información relacionada con parches")
+@click.option("--all", is_flag=True, help="Show all files without limit")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
+@click.option("--patches", is_flag=True, help="Show only information related to patches")
 @site_option
 def diff_command(all, verbose, patches, site):
     """
-    Muestra las diferencias entre el servidor remoto y el entorno local.
-    Este comando siempre es de solo lectura y nunca realiza cambios.
+    Shows the differences between the remote server and the local environment.
+    This command is always read-only and never makes changes.
     """
-    # Seleccionar sitio si es necesario
+    # Select site if necessary
     config = get_yaml_config(verbose=verbose)
     if not config.select_site(site):
         sys.exit(1)
@@ -63,53 +63,53 @@ def diff_command(all, verbose, patches, site):
         sys.exit(1)
     
 @cli.command("sync-files")
-@click.option("--dry-run", is_flag=True, help="Simular operación sin hacer cambios")
+@click.option("--dry-run", is_flag=True, help="Simulate operation without making changes")
 @click.option("--direction", type=click.Choice(['from-remote', 'to-remote']), 
-              default='from-remote', help="Dirección de la sincronización")
-@click.option("--clean/--no-clean", default=True, help="Limpiar archivos excluidos después de sincronizar")
-@click.option("--skip-backup", is_flag=True, help="Omitir la creación del backup completo antes de sincronizar desde remoto")
+              default='from-remote', help="Direction of synchronization")
+@click.option("--clean/--no-clean", default=True, help="Clean excluded files after synchronization")
+@click.option("--skip-backup", is_flag=True, help="Skip creating a full backup before synchronizing from remote")
 @click.option("--patch-exclusions", type=click.Choice(['default', 'disabled', 'local-only', 'remote-only', 'both-ways']), 
-              default='default', help="Método de exclusión de parches registrados: 'default' usa la configuración global, 'disabled' no excluye parches")
+              default='default', help="Method of excluding registered patches: 'default' uses global configuration, 'disabled' doesn't exclude patches")
 @site_option
 def sync_files_command(dry_run, direction, clean, skip_backup, patch_exclusions, site):
     """
-    Sincroniza archivos entre el servidor remoto y el entorno local.
+    Synchronizes files between the remote server and the local environment.
     
-    Por defecto, cuando se sincroniza desde el servidor remoto (from-remote), 
-    se crea automáticamente un backup completo del entorno local antes de 
-    realizar cualquier cambio. Este backup es independiente de las exclusiones 
-    configuradas y guarda todos los archivos.
+    By default, when synchronizing from the remote server (from-remote), 
+    a full backup of the local environment is automatically created before 
+    making any changes. This backup is independent of the configured exclusions 
+    and saves all files.
     
-    Use --skip-backup si no desea crear este backup completo.
+    Use --skip-backup if you don't want to create this full backup.
     
-    El sistema puede proteger automáticamente los archivos con parches registrados
-    durante la sincronización. Use --patch-exclusions para controlar este comportamiento:
-    - default: usa la configuración global definida en config.yaml
-    - disabled: no excluye automáticamente archivos con parches
-    - local-only: excluye parches solo cuando se sincroniza desde remoto a local
-    - remote-only: excluye parches solo cuando se sincroniza desde local a remoto  
-    - both-ways: excluye parches en ambas direcciones
+    The system can automatically protect files with registered patches
+    during synchronization. Use --patch-exclusions to control this behavior:
+    - default: uses the global configuration defined in config.yaml
+    - disabled: doesn't automatically exclude files with patches
+    - local-only: excludes patches only when synchronizing from remote to local
+    - remote-only: excludes patches only when synchronizing from local to remote  
+    - both-ways: excludes patches in both directions
     """
-    # Seleccionar sitio si es necesario
+    # Select site if necessary
     config = get_yaml_config()
     if not config.select_site(site):
         sys.exit(1)
     
-    # Si el usuario ha especificado un modo de exclusión de parches diferente al predeterminado,
-    # modificar temporalmente la configuración
+    # If the user has specified a patch exclusion mode different from the default,
+    # temporarily modify the configuration
     original_exclusions_mode = None
     if patch_exclusions != 'default':
-        # Guardar el valor original
+        # Save the original value
         original_exclusions_mode = config.get("patches", "exclusions_mode", default="local-only")
-        # Modificar la configuración temporalmente
+        # Modify the configuration temporarily
         if "patches" not in config.config:
             config.config["patches"] = {}
         config.config["patches"]["exclusions_mode"] = patch_exclusions
     
-    # Ejecutar sincronización
+    # Execute synchronization
     success = sync_files(direction=direction, dry_run=dry_run, clean=clean, skip_full_backup=skip_backup)
     
-    # Restaurar la configuración original si se modificó
+    # Restore the original configuration if it was modified
     if original_exclusions_mode is not None:
         config.config["patches"]["exclusions_mode"] = original_exclusions_mode
     
@@ -117,16 +117,16 @@ def sync_files_command(dry_run, direction, clean, skip_backup, patch_exclusions,
         sys.exit(1)
     
 @cli.command("sync-db")
-@click.option("--dry-run", is_flag=True, help="Simular operación sin hacer cambios")
+@click.option("--dry-run", is_flag=True, help="Simulate operation without making changes")
 @click.option("--direction", type=click.Choice(['from-remote', 'to-remote']), 
-              default='from-remote', help="Dirección de la sincronización")
-@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada durante la ejecución")
+              default='from-remote', help="Direction of synchronization")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
 @site_option
 def sync_db_command(dry_run, direction, verbose, site):
     """
-    Sincroniza la base de datos entre el servidor remoto y el entorno local.
+    Synchronizes the database between the remote server and the local environment.
     """
-    # Seleccionar sitio si es necesario
+    # Select site if necessary
     config = get_yaml_config(verbose=verbose)
     if not config.select_site(site):
         sys.exit(1)
@@ -136,35 +136,35 @@ def sync_db_command(dry_run, direction, verbose, site):
         sys.exit(1)
 
 @cli.command("media-path")
-@click.option("--remote", is_flag=True, help="Aplicar en el servidor remoto en lugar de localmente")
-@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada durante la ejecución")
+@click.option("--remote", is_flag=True, help="Apply on the remote server instead of locally")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
 @site_option
 def media_path_command(remote, verbose, site):
     """
-    Configura la ruta de medios de WordPress utilizando el plugin WP Original Media Path.
+    Configures the WordPress media path using the WP Original Media Path plugin.
     
-    Este comando instala y configura el plugin necesario para gestionar rutas
-    de medios personalizadas según los valores definidos en config.yaml.
-    Mantiene una única fuente de configuración para asegurar la consistencia.
+    This command installs and configures the necessary plugin to manage
+    custom media paths according to the values defined in config.yaml.
+    It maintains a single source of configuration to ensure consistency.
     
-    Ejemplos:
-      media-path                 # Configurar en entorno local
-      media-path --remote        # Configurar en servidor remoto
-      media-path --verbose       # Mostrar información detallada
+    Examples:
+      media-path                 # Configure in local environment
+      media-path --remote        # Configure in remote server
+      media-path --verbose       # Show detailed information
     """
-    # Seleccionar sitio si es necesario
+    # Select site if necessary
     config = get_yaml_config(verbose=verbose)
     if not config.select_site(site):
         sys.exit(1)
         
-    # Obtener la configuración
+    # Get the configuration
     media_config = config.config.get("media", {})
     expert_mode = media_config.get("expert_mode", False)
     
     success = configure_media_path(
-        media_url=None,  # Forzar a que obtenga el valor de config.yaml
+        media_url=None,  # Force to get value from config.yaml
         expert_mode=expert_mode,
-        media_path=None,  # Forzar a que obtenga el valor de config.yaml
+        media_path=None,  # Force to get value from config.yaml
         remote=remote,
         verbose=verbose
     )
@@ -174,141 +174,139 @@ def media_path_command(remote, verbose, site):
     
 @cli.command("patch")
 @click.argument("file_path", required=False)
-@click.option("--list", is_flag=True, help="Listar parches registrados")
-@click.option("--add", is_flag=True, help="Registrar un nuevo parche")
-@click.option("--remove", is_flag=True, help="Eliminar un parche del registro")
-@click.option("--info", is_flag=True, help="Mostrar información detallada de un parche sin aplicarlo")
-@click.option("--dry-run", is_flag=True, help="Simular operación sin hacer cambios")
-@click.option("--description", "-d", help="Descripción del parche (al registrar)")
-@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada")
-@click.option("--config", is_flag=True, help="Mostrar configuración del sistema de parches")
+@click.option("--list", is_flag=True, help="List registered patches")
+@click.option("--add", is_flag=True, help="Register a new patch")
+@click.option("--remove", is_flag=True, help="Remove a patch from the registry")
+@click.option("--info", is_flag=True, help="Show detailed information about a patch without applying it")
+@click.option("--dry-run", is_flag=True, help="Simulate operation without making changes")
+@click.option("--description", "-d", help="Patch description (when registering)")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
+@click.option("--config", is_flag=True, help="Show patch system configuration")
 @site_option
 def patch_command(file_path, list, add, remove, info, dry_run, description, verbose, config, site):
     """
-    Gestiona y registra parches a plugins de terceros.
+    Manages and registers patches to third-party plugins.
     
-    FILE_PATH es la ruta relativa al archivo que se va a parchar.
-    Este comando NO APLICA los parches, solo los gestiona. Para aplicar
-    un parche use el comando 'patch commit'.
+    FILE_PATH is the relative path to the file to be patched.
+    This command DOES NOT APPLY the patches, it only manages them. To apply
+    a patch use the 'patch commit' command.
     
-    Ejemplos:
-      patch --list -v                     # Listar parches con información detallada
-      patch --add wp-content/plugins/x/y.php  # Registrar un nuevo parche
-      patch --add --description "Fix..." x.php # Registrar con descripción
-      patch --remove wp-content/plugins/x/y.php # Eliminar un parche del registro
-      patch --info wp-content/plugins/x/y.php   # Ver detalles sin aplicar
-      patch --config                      # Ver configuración del sistema de parches
+    Examples:
+      patch --list -v                     # List patches with detailed information
+      patch --add wp-content/plugins/x/y.php  # Register a new patch
+      patch --add --description "Fix..." x.php # Register with description
+      patch --remove wp-content/plugins/x/y.php # Remove a patch from the registry
+      patch --info wp-content/plugins/x/y.php   # View details without applying
+      patch --config                      # View patch system configuration
     """
-    # Seleccionar sitio si es necesario
+    # Select site if necessary
     config_obj = get_yaml_config(verbose=verbose)
     if not config_obj.select_site(site):
         sys.exit(1)
     
-    # Mostrar configuración del sistema de parches si se solicita
+    # Show patch system configuration if requested
     if config:
         from commands.patch import PatchManager
         manager = PatchManager()
         manager.show_config_info(verbose=True)
         return
         
-    # Opción de listar parches
+    # Option to list patches
     if list:
         from commands.patch import PatchManager
         manager = PatchManager()
         manager.list_patches(verbose=verbose)
         return
     
-    # Verificar que se proporcionó una ruta para add/remove/info
+    # Verify that a path was provided for add/remove/info
     if (add or remove or info) and not file_path:
-        click.echo("❌ Debe especificar la ruta del archivo para --add, --remove o --info")
+        click.echo("❌ You must specify the file path for --add, --remove or --info")
         sys.exit(1)
     
-    # Opción de agregar un parche
+    # Option to add a patch
     if add:
         success = add_patch(file_path, description)
         if not success:
             sys.exit(1)
         return
     
-    # Opción de eliminar un parche
+    # Option to remove a patch
     if remove:
         success = remove_patch(file_path)
         if not success:
             sys.exit(1)
         return
     
-    # Opción de mostrar info detallada
+    # Option to show detailed info
     if info and file_path:
-        # Mostrar info detallada de un parche sin aplicarlo
+        # Show detailed info about a patch without applying it
         success = apply_patch(file_path=file_path, dry_run=True, show_details=True)
         if not success:
             sys.exit(1)
         return
         
-    # Si no se especificó ninguna acción pero sí un archivo, mostrar info
+    # If no action was specified but a file was, show info
     if file_path and not (add or remove or info):
-        # Mostrar info simple
+        # Show simple info
         success = apply_patch(file_path=file_path, dry_run=True, show_details=False)
         if not success:
             sys.exit(1)
         return
         
-    # Si no se especificó ninguna opción, mostrar ayuda
-    click.echo("ℹ️ Para ver la lista de parches registrados: patch --list")
-    click.echo("ℹ️ Para aplicar parches: patch-commit [archivo]")
-    click.echo("ℹ️ Para más opciones: patch --help")
+    # Default behavior: list registered patches
+    list_patches(verbose=verbose)
 
 @cli.command("patch-commit")
 @click.argument("file_path", required=False)
-@click.option("--dry-run", is_flag=True, help="Simular operación sin hacer cambios")
-@click.option("--force", is_flag=True, help="Forzar aplicación incluso con archivos modificados o versiones diferentes")
-@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada durante la ejecución")
+@click.option("--dry-run", is_flag=True, help="Simulate operation without making changes")
+@click.option("--force", is_flag=True, help="Force application even with modified or different versions")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
 @site_option
 def patch_commit_command(file_path, dry_run, force, verbose, site):
     """
-    Aplica parches registrados al servidor remoto.
+    Applies registered patches to the remote server.
     
-    FILE_PATH es la ruta relativa al archivo que se va a parchar. Si no se especifica,
-    se intentará aplicar todos los parches registrados.
+    FILE_PATH is the relative path to the file to be patched. If not specified,
+    all registered patches will be applied.
     
-    Este comando requiere confirmación explícita y verifica la configuración
-    de seguridad de producción antes de aplicar cualquier cambio.
+    This command requires explicit confirmation and verifies the production
+    security configuration before applying any changes.
     
-    Ejemplos:
-      patch-commit wp-content/plugins/x/y.php  # Aplicar un parche específico
-      patch-commit                           # Aplicar todos los parches registrados
-      patch-commit --dry-run                 # Ver qué cambios se harían sin aplicarlos
-      patch-commit --force                   # Forzar aplicación incluso con archivos modificados
+    Examples:
+      patch-commit wp-content/plugins/x/y.php  # Apply a specific patch
+      patch-commit                           # Apply all registered patches
+      patch-commit --dry-run                 # View what changes would be made without applying
+      patch-commit --force                   # Force application even with modified
     """
-    # Seleccionar sitio si es necesario
+    # Select site if necessary
     config = get_yaml_config(verbose=verbose)
     if not config.select_site(site):
         sys.exit(1)
         
-    # Verificar protección de producción
+    # Verify production protection
     production_safety = config.get("security", "production_safety") == "enabled"
     
     if production_safety and not dry_run:
-        print("⛔ ERROR: No se pueden aplicar parches con la protección de producción activada.")
-        print("   Esta operación modificará archivos en el servidor de PRODUCCIÓN.")
-        print("   Si estás seguro de lo que haces, puedes:")
-        print("   1. Usar --dry-run para ver qué cambios se harían sin aplicarlos")
-        print("   2. Desactivar temporalmente 'production_safety' en la configuración")
+        print("⛔ ERROR: Cannot apply patches with production protection activated.")
+        print("   This operation will modify files on the PRODUCTION server.")
+        print("   If you are sure what you are doing, you can:")
+        print("   1. Use --dry-run to view what changes would be made without applying")
+        print("   2. Temporarily disable 'production_safety' in the configuration")
         sys.exit(1)
     
-    # Solicitar confirmación explícita para aplicar parches
+    # Request explicit confirmation to apply patches
     if not dry_run and not force:
         if file_path:
-            message = f"⚠️ ¿Estás seguro de aplicar el parche a '{file_path}'? Esta acción modificará archivos en el servidor."
+            message = f"⚠️ Are you sure you want to apply the patch to '{file_path}'? This action will modify files on the server."
         else:
-            message = "⚠️ ¿Estás seguro de aplicar TODOS los parches registrados? Esta acción modificará archivos en el servidor."
+            message = "⚠️ Are you sure you want to apply ALL registered patches? This action will modify files on the server."
         
         confirm = input(f"{message} (s/N): ")
         if confirm.lower() != "s":
-            print("❌ Operación cancelada.")
+            print("❌ Operation cancelled.")
             sys.exit(0)
     
-    # Aplicar el parche o parches
+    # Apply the patch or patches
     success = apply_patch(file_path=file_path, dry_run=dry_run, show_details=verbose, force=force)
     
     if not success:
@@ -316,17 +314,17 @@ def patch_commit_command(file_path, dry_run, force, verbose, site):
 
 @cli.command("rollback")
 @click.argument("file_path")
-@click.option("--dry-run", is_flag=True, help="Simular operación sin hacer cambios")
+@click.option("--dry-run", is_flag=True, help="Simulate operation without making changes")
 @site_option
 def rollback_command(file_path, dry_run, site):
     """
-    Revierte un parche aplicado anteriormente a un plugin o tema.
+    Reverts a previously applied patch to a plugin or theme.
     
-    FILE_PATH es la ruta relativa al archivo que se va a restaurar desde el backup.
-    Funciona sólo con parches que se hayan aplicado previamente y estén registrados
-    en el archivo patches.lock.json.
+    FILE_PATH is the relative path to the file to be restored from the backup.
+    It works only with patches that have been applied previously and are registered
+    in the patches.lock.json file.
     """
-    # Seleccionar sitio si es necesario
+    # Select site if necessary
     config = get_yaml_config()
     if not config.select_site(site):
         sys.exit(1)
@@ -336,16 +334,16 @@ def rollback_command(file_path, dry_run, site):
         sys.exit(1)
     
 @cli.command("config")
-@click.option("--show", is_flag=True, help="Mostrar configuración actual")
-@click.option("--repair", is_flag=True, help="Reparar la configuración si hay problemas de estructura")
-@click.option("--output", type=str, default="wp-deploy.yaml", help="Ruta de salida para el archivo de configuración")
-@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada durante la ejecución")
+@click.option("--show", is_flag=True, help="Show current configuration")
+@click.option("--repair", is_flag=True, help="Repair configuration if there are structure problems")
+@click.option("--output", type=str, default="wp-deploy.yaml", help="Output path for configuration file")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
 @site_option
 def config_command(show, repair, output, verbose, site):
     """
-    Gestiona la configuración de las herramientas.
+    Manages the configuration of the tools.
     """
-    # Seleccionar sitio si es necesario
+    # Select site if necessary
     config = get_yaml_config(verbose=verbose)
     if site and (show or repair) and not config.select_site(site):
         sys.exit(1)
@@ -353,138 +351,138 @@ def config_command(show, repair, output, verbose, site):
     output_path = Path(output)
     
     if show:
-        # Mostrar la configuración actual
+        # Show current configuration
         if site:
-            print(f"Mostrando configuración para el sitio: {site}")
+            print(f"Showing configuration for site: {site}")
         config.display()
     elif repair:
-        # Reparar la configuración
+        # Repair configuration
         import shutil
         
-        # Hacer una copia de seguridad si el archivo existe
+        # Make a backup if the file exists
         if output_path.exists():
             backup_path = output_path.with_suffix(".yaml.bak")
             shutil.copy2(output_path, backup_path)
-            click.echo(f"✅ Copia de seguridad creada: {backup_path}")
+            click.echo(f"✅ Backup created: {backup_path}")
             
-        # Leer la plantilla existente si existe
+        # Read existing template if exists
         existing_config = {}
         if output_path.exists():
             try:
                 with open(output_path, 'r') as f:
                     existing_config = yaml.safe_load(f) or {}
             except Exception as e:
-                click.echo(f"⚠️ Error al leer la configuración actual: {str(e)}")
+                click.echo(f"⚠️ Error reading current configuration: {str(e)}")
                 
-        # Asegurarse de que todas las secciones principales existen
+        # Ensure all main sections exist
         sections = ["ssh", "security", "database", "urls", "media", "exclusions", "protected_files"]
         
         for section in sections:
             if section not in existing_config:
                 existing_config[section] = config.config.get(section, {})
                 
-        # Guardar la configuración reparada
+        # Save repaired configuration
         try:
             with open(output_path, 'w') as f:
                 yaml.dump(existing_config, f, default_flow_style=False, sort_keys=False)
-            click.echo(f"✅ Configuración reparada guardada en {output_path}")
+            click.echo(f"✅ Repaired configuration saved in {output_path}")
         except Exception as e:
-            click.echo(f"❌ Error al guardar la configuración reparada: {str(e)}")
+            click.echo(f"❌ Error saving repaired configuration: {str(e)}")
     else:
-        click.echo("Uso: wp-deploy config [--show|--repair] [--output ARCHIVO]")
+        click.echo("Usage: wp-deploy config [--show|--repair] [--output ARCHIVO]")
 
 @cli.command("site")
-@click.option("--list", is_flag=True, help="Listar sitios configurados")
-@click.option("--add", is_flag=True, help="Añadir o actualizar un sitio")
-@click.option("--remove", is_flag=True, help="Eliminar un sitio")
-@click.option("--set-default", is_flag=True, help="Establecer un sitio como predeterminado")
-@click.option("--init", is_flag=True, help="Inicializar archivo de configuración de sitios")
-@click.option("--from-current", is_flag=True, help="Usar la configuración actual al añadir un sitio")
-@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada")
+@click.option("--list", is_flag=True, help="List configured sites")
+@click.option("--add", is_flag=True, help="Add or update a site")
+@click.option("--remove", is_flag=True, help="Remove a site")
+@click.option("--set-default", is_flag=True, help="Set a site as default")
+@click.option("--init", is_flag=True, help="Initialize site configuration file")
+@click.option("--from-current", is_flag=True, help="Use current configuration when adding a site")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
 @click.argument("site_alias", required=False)
 def site_command(list, add, remove, set_default, init, from_current, verbose, site_alias):
     """
-    Gestiona configuraciones de múltiples sitios.
+    Manages multiple sites configurations.
     
-    Esta función permite mantener una única instalación de las herramientas
-    que puede operar con múltiples sitios WordPress independientes.
+    This function allows maintaining a single installation of the tools
+    that can operate with multiple independent WordPress sites.
     
-    Ejemplos:
-      site --list                  # Listar sitios configurados
-      site --add mitienda          # Añadir un sitio con alias 'mitienda'
-      site --add mitienda --from-current  # Añadir usando configuración actual
-      site --remove mitienda       # Eliminar un sitio
-      site --set-default mitienda  # Establecer sitio por defecto
+    Examples:
+      site --list                  # List configured sites
+      site --add mitienda          # Add a site with alias 'mitienda'
+      site --add mitienda --from-current  # Add using current configuration
+      site --remove mitienda       # Remove a site
+      site --set-default mitienda  # Set site as default
     """
     config = get_yaml_config(verbose=verbose)
     
-    # Inicializar archivo de sitios
+    # Initialize site configuration file
     if init:
         default = site_alias if set_default else None
         success = config.create_sites_config(default_site=default)
         return
     
-    # Listar sitios configurados
+    # List configured sites
     if list:
         sites = config.get_available_sites()
         default_site = config.get_default_site()
         
         if not sites:
-            print("ℹ️ No hay sitios configurados")
-            print("   Puede añadir sitios con: site --add ALIAS")
+            print("ℹ️ No sites configured")
+            print("   You can add sites with: site --add ALIAS")
             return
         
-        print("📋 Sitios configurados:")
+        print("📋 Configured sites:")
         for alias, site_config in sites.items():
-            default_mark = " (por defecto)" if alias == default_site else ""
+            default_mark = " (default)" if alias == default_site else ""
             print(f"  - {alias}{default_mark}")
             
-            # Mostrar detalles si verbose
+            # Show details if verbose
             if verbose:
                 ssh_config = site_config.get("ssh", {})
-                remote = ssh_config.get("remote_host", "No configurado")
-                path = ssh_config.get("remote_path", "No configurado")
-                print(f"    Servidor: {remote}")
-                print(f"    Ruta: {path}")
+                remote = ssh_config.get("remote_host", "Not configured")
+                path = ssh_config.get("remote_path", "Not configured")
+                print(f"    Server: {remote}")
+                print(f"    Path: {path}")
                 
                 if "urls" in site_config:
-                    print(f"    URL remota: {site_config['urls'].get('remote', 'No configurado')}")
-                    print(f"    URL local: {site_config['urls'].get('local', 'No configurado')}")
+                    print(f"    Remote URL: {site_config['urls'].get('remote', 'Not configured')}")
+                    print(f"    Local URL: {site_config['urls'].get('local', 'Not configured')}")
                 
                 print("")
         return
     
-    # Verificar que se proporcionó un alias para otras operaciones
+    # Verify that a site alias was provided for other operations
     if (add or remove or set_default) and not site_alias:
-        print("❌ Debe especificar un alias para añadir, eliminar o establecer como predeterminado")
-        print("   Ejemplo: site --add misitio")
+        print("❌ You must specify an alias for adding, removing or setting as default")
+        print("   Example: site --add misitio")
         sys.exit(1)
     
-    # Añadir o actualizar un sitio
+    # Add or update a site
     if add:
         site_config = None
         if from_current:
             site_config = config.config
-            print(f"ℹ️ Usando configuración actual para el sitio '{site_alias}'")
+            print(f"ℹ️ Using current configuration for site '{site_alias}'")
         
         success = config.add_site(site_alias, config=site_config, is_default=set_default)
         if not success:
             sys.exit(1)
         return
     
-    # Eliminar un sitio
+    # Remove a site
     if remove:
         success = config.remove_site(site_alias)
         if not success:
             sys.exit(1)
         return
     
-    # Establecer sitio por defecto
+    # Set site as default
     if set_default and not add:
-        # Verificar que el sitio existe
+        # Verify that the site exists
         sites = config.get_available_sites()
         if site_alias not in sites:
-            print(f"❌ Error: Sitio '{site_alias}' no encontrado")
+            print(f"❌ Error: Site '{site_alias}' not found")
             sys.exit(1)
         
         success = config.add_site(site_alias, config=sites[site_alias], is_default=True)
@@ -492,77 +490,77 @@ def site_command(list, add, remove, set_default, init, from_current, verbose, si
             sys.exit(1)
         return
     
-    # Si no se especificó ninguna opción, mostrar ayuda
-    print("ℹ️ Uso: site [--list|--add|--remove|--set-default|--init] [ALIAS]")
-    print("   Para obtener ayuda detallada: site --help")
+    # If no option was specified, show help
+    print("ℹ️ Usage: site [--list|--add|--remove|--set-default|--init] [ALIAS]")
+    print("   For detailed help: site --help")
 
 @cli.command("check")
-@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada durante la ejecución")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
 @site_option
 def check_command(verbose, site):
     """
-    Verifica los requisitos y configuración del sistema.
+    Verifies system requirements and configuration.
     """
-    # Seleccionar sitio si es necesario
+    # Select site if necessary
     config = get_yaml_config(verbose=verbose)
     if site and not config.select_site(site):
         sys.exit(1)
         
     import shutil
     
-    click.echo("🔍 Verificando requisitos del sistema...")
+    click.echo("🔍 Verifying system requirements...")
     
-    # Verificar que rsync está instalado
+    # Verify that rsync is installed
     if shutil.which("rsync"):
-        click.echo("✅ rsync: Instalado")
+        click.echo("✅ rsync: Installed")
     else:
-        click.echo("❌ rsync: No encontrado")
+        click.echo("❌ rsync: Not found")
         
-    # Verificar que ssh está instalado
+    # Verify that ssh is installed
     if shutil.which("ssh"):
-        click.echo("✅ ssh: Instalado")
+        click.echo("✅ ssh: Installed")
     else:
-        click.echo("❌ ssh: No encontrado")
+        click.echo("❌ ssh: Not found")
         
-    # Verificar que ddev está instalado (para sync-db)
+    # Verify that ddev is installed (for sync-db)
     if shutil.which("ddev"):
-        click.echo("✅ ddev: Instalado")
+        click.echo("✅ ddev: Installed")
     else:
-        click.echo("⚠️ ddev: No encontrado (requerido para sincronización de base de datos)")
+        click.echo("⚠️ ddev: Not found (required for database synchronization)")
         
-    # Verificar la configuración SSH
+    # Verify SSH configuration
     ssh_config = os.path.expanduser("~/.ssh/config")
     if os.path.exists(ssh_config):
-        click.echo("✅ Archivo de configuración SSH: Encontrado")
+        click.echo("✅ SSH configuration file: Found")
     else:
-        click.echo("❌ Archivo de configuración SSH: No encontrado")
+        click.echo("❌ SSH configuration file: Not found")
         
-    # Verificar la configuración del proyecto
-    click.echo("\n🔍 Verificando estructura de configuración YAML...")
+    # Verify project configuration
+    click.echo("\n🔍 Verifying YAML configuration structure...")
     
-    # Verificar estructura de las secciones principales
+    # Verify main sections structure
     sections = ["ssh", "security", "database", "urls", "media", "exclusions", "protected_files"]
     all_good = True
     
     for section in sections:
         if section in config.config:
-            click.echo(f"✅ Sección '{section}': Presente")
+            click.echo(f"✅ Section '{section}': Present")
         else:
-            click.echo(f"❌ Sección '{section}': Falta")
+            click.echo(f"❌ Section '{section}': Missing")
             all_good = False
     
     if not all_good:
-        click.echo("⚠️ Algunas secciones de la configuración están faltando. Ejecute 'config --repair' para generar una plantilla completa.")
+        click.echo("⚠️ Some sections of the configuration are missing. Run 'config --repair' to generate a complete template.")
     
-    # Verificar que las rutas existen
-    click.echo("\n🔍 Verificando rutas y configuración...")
+    # Verify that paths exist
+    click.echo("\n🔍 Verifying paths and configuration...")
     local_path = Path(config.get("ssh", "local_path"))
     if local_path.exists():
-        click.echo(f"✅ Ruta local: Existe ({local_path})")
+        click.echo(f"✅ Local path: Exists ({local_path})")
     else:
-        click.echo(f"❌ Ruta local: No existe ({local_path})")
+        click.echo(f"❌ Local path: Not exists ({local_path})")
         
-    # Verificar variables de configuración críticas
+    # Verify critical configuration variables
     critical_configs = [
         ("ssh", "remote_host"),
         ("ssh", "remote_path"),
@@ -571,140 +569,140 @@ def check_command(verbose, site):
     
     for path in critical_configs:
         if config.get(*path):
-            click.echo(f"✅ Configuración {'.'.join(path)}: Configurada")
+            click.echo(f"✅ Configuration {'.'.join(path)}: Configured")
         else:
-            click.echo(f"❌ Configuración {'.'.join(path)}: No configurada")
+            click.echo(f"❌ Configuration {'.'.join(path)}: Not configured")
             
-    # Verificar exclusiones
+    # Verify exclusions
     try:
         exclusions = config.get_exclusions()
         if exclusions:
-            click.echo(f"✅ Exclusiones: {len(exclusions)} patrones configurados")
+            click.echo(f"✅ Exclusions: {len(exclusions)} pattern configured")
         else:
-            click.echo("⚠️ Exclusiones: No hay patrones configurados")
+            click.echo("⚠️ Exclusions: No pattern configured")
     except Exception as e:
-        click.echo(f"❌ Error al verificar exclusiones: {str(e)}")
+        click.echo(f"❌ Error verifying exclusions: {str(e)}")
         
-    # Verificar configuración de medios
+    # Verify media configuration
     try:
         media_config = config.get_media_config()
         if media_config and media_config.get("url"):
-            click.echo(f"✅ URL de medios configurada: {media_config.get('url')}")
+            click.echo(f"✅ Media URL configured: {media_config.get('url')}")
         else:
-            click.echo("ℹ️ URL de medios no configurada (se usará la ruta estándar)")
+            click.echo("ℹ️ Media URL not configured (standard path will be used)")
     except Exception as e:
-        click.echo(f"❌ Error al verificar configuración de medios: {str(e)}")
+        click.echo(f"❌ Error verifying media configuration: {str(e)}")
 
 @cli.command("debug-config")
-@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada durante la ejecución")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
 @site_option
 def debug_config_command(verbose, site):
     """
-    Muestra información de depuración sobre la configuración
+    Shows debugging information about configuration
     """
-    # Seleccionar sitio si es necesario
-    config = get_yaml_config(verbose=True)  # Forzar verbose para este comando
+    # Select site if necessary
+    config = get_yaml_config(verbose=True)  # Force verbose for this command
     if site and not config.select_site(site):
         sys.exit(1)
         
-    # Mostrar rutas de configuración
-    print("\n🔍 Información de depuración de configuración:")
-    print(f"  - Directorio raíz detectado: {config.project_root}")
-    print(f"  - Directorio de deploy-tools: {config.deploy_tools_dir}")
+    # Show configuration paths
+    print("\n🔍 Debugging configuration information:")
+    print(f"  - Detected root directory: {config.project_root}")
+    print(f"  - Deploy-tools directory: {config.deploy_tools_dir}")
     
-    # Verificar archivos de configuración
+    # Verify configuration files
     global_config_file = config.deploy_tools_dir / "python" / "config.yaml"
     project_config_file = config.project_root / "wp-deploy.yaml"
     sites_config_file = config.deploy_tools_dir / "python" / "sites.yaml"
     
-    print("\n📂 Archivos de configuración:")
+    print("\n📂 Configuration files:")
     if global_config_file.exists():
-        print(f"  ✅ Archivo global: {global_config_file} (EXISTE)")
+        print(f"  ✅ Global file: {global_config_file} (EXISTS)")
     else:
-        print(f"  ❌ Archivo global: {global_config_file} (NO EXISTE)")
+        print(f"  ❌ Global file: {global_config_file} (DOES NOT EXIST)")
         
     if project_config_file.exists():
-        print(f"  ✅ Archivo de proyecto: {project_config_file} (EXISTE)")
+        print(f"  ✅ Project file: {project_config_file} (EXISTS)")
     else:
-        print(f"  ❌ Archivo de proyecto: {project_config_file} (NO EXISTE)")
+        print(f"  ❌ Project file: {project_config_file} (DOES NOT EXIST)")
         
     if sites_config_file.exists():
-        print(f"  ✅ Archivo de sitios: {sites_config_file} (EXISTE)")
+        print(f"  ✅ Sites file: {sites_config_file} (EXISTS)")
         
-        # Mostrar información de sitios
+        # Show site information
         available_sites = config.get_available_sites()
         default_site = config.get_default_site()
         
         if available_sites:
-            print(f"     Sitios configurados: {len(available_sites)}")
-            print(f"     Sitio por defecto: {default_site if default_site else 'Ninguno'}")
-            print(f"     Sitio actual: {config.current_site if hasattr(config, 'current_site') and config.current_site else 'Ninguno'}")
+            print(f"     Configured sites: {len(available_sites)}")
+            print(f"     Default site: {default_site if default_site else 'None'}")
+            print(f"     Current site: {config.current_site if hasattr(config, 'current_site') and config.current_site else 'None'}")
         else:
-            print(f"     No hay sitios configurados")
+            print(f"     No sites configured")
     else:
-        print(f"  ❌ Archivo de sitios: {sites_config_file} (NO EXISTE)")
+        print(f"  ❌ Sites file: {sites_config_file} (DOES NOT EXIST)")
         
-    # Mostrar valores de configuración críticos
-    print("\n🔑 Valores REALES de configuración de base de datos (nunca mostrados en otros comandos):")
+    # Show critical configuration values
+    print("\n🔑 REAL VALUES of database configuration (never shown in other commands):")
     db_config = config.config.get('database', {}).get('remote', {})
-    print(f"  - Host: {db_config.get('host', 'No configurado')}")
-    print(f"  - Nombre: {db_config.get('name', 'No configurado')}")
-    print(f"  - Usuario: {db_config.get('user', 'No configurado')}")
-    print(f"  - Contraseña: {'*'*len(db_config.get('password', '')) if 'password' in db_config else 'No configurada'}")
+    print(f"  - Host: {db_config.get('host', 'Not configured')}")
+    print(f"  - Name: {db_config.get('name', 'Not configured')}")
+    print(f"  - User: {db_config.get('user', 'Not configured')}")
+    print(f"  - Password: {'*'*len(db_config.get('password', '')) if 'password' in db_config else 'Not configured'}")
     
-    print("\n⚠️  IMPORTANTE: Por seguridad, cuando uses los comandos normales como 'config --show',")
-    print("   se mostrarán valores de ejemplo para credenciales sensibles (como se ve a continuación).")
-    print("   Los valores reales se usan internamente pero no se muestran para proteger las credenciales.")
+    print("\n⚠️  IMPORTANT: For security, when you use normal commands like 'config --show',")
+    print("   example values will be shown for sensitive credentials (as seen below).")
+    print("   Real values are used internally but not shown to protect credentials.")
     
-    # Mostrar la configuración completa con valores enmascarados
-    print("\n🔧 Configuración como se muestra normalmente (con credenciales ocultas):")
+    # Show complete configuration with masked values
+    print("\n🔧 Configuration as shown normally (with hidden credentials):")
     config.display()
 
 @cli.command("init")
-@click.option("--with-db", is_flag=True, help="Incluir sincronización de base de datos")
-@click.option("--with-media", is_flag=True, help="Configurar URLs de medios")
-@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada")
-@click.option("--dry-run", is_flag=True, help="Simular operación sin hacer cambios")
+@click.option("--with-db", is_flag=True, help="Include database synchronization")
+@click.option("--with-media", is_flag=True, help="Configure media URLs")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
+@click.option("--dry-run", is_flag=True, help="Simulate operation without making changes")
 @site_option
 def init_command(with_db, with_media, verbose, dry_run, site):
     """
-    Inicializa un entorno de desarrollo completo en un solo paso.
+    Initializes a complete development environment in a single step.
     
-    Este comando realiza las siguientes operaciones en secuencia:
-    1. Sincroniza archivos desde el servidor remoto
-    2. Opcionalmente sincroniza la base de datos
-    3. Opcionalmente configura las rutas de medios
+    This command performs the following operations in sequence:
+    1. Synchronizes files from the remote server
+    2. Optionally synchronizes the database
+    3. Optionally configures media paths
     
-    Es equivalente a ejecutar los siguientes comandos en secuencia:
+    It is equivalent to executing the following commands in sequence:
     - sync-files
-    - sync-db (si --with-db)
-    - media-path (si --with-media)
+    - sync-db (if --with-db)
+    - media-path (if --with-media)
     """
-    # Seleccionar sitio si es necesario
+    # Select site if necessary
     config = get_yaml_config(verbose=verbose)
     if not config.select_site(site):
         sys.exit(1)
     
-    print("🚀 Inicializando entorno de desarrollo...")
+    print("🚀 Initializing development environment...")
     
-    # 1. Sincronizar archivos
-    print("\n📂 Paso 1: Sincronización de archivos")
+    # 1. Synchronize files
+    print("\n📂 Step 1: Synchronization of files")
     success = sync_files(direction="from-remote", dry_run=dry_run, clean=True)
     if not success:
-        print("❌ Error en la sincronización de archivos")
+        print("❌ Error in file synchronization")
         sys.exit(1)
     
-    # 2. Sincronizar base de datos (opcional)
+    # 2. Synchronize database (optional)
     if with_db:
-        print("\n🗄️ Paso 2: Sincronización de base de datos")
+        print("\n🗄️ Step 2: Synchronization of database")
         success = sync_database(direction="from-remote", dry_run=dry_run, verbose=verbose)
         if not success:
-            print("❌ Error en la sincronización de base de datos")
+            print("❌ Error in database synchronization")
             sys.exit(1)
     
-    # 3. Configurar rutas de medios (opcional)
+    # 3. Configure media paths (optional)
     if with_media:
-        print("\n🖼️ Paso 3: Configuración de rutas de medios")
+        print("\n🖼️ Step 3: Configure media paths")
         media_config = config.config.get("media", {})
         expert_mode = media_config.get("expert_mode", False)
         
@@ -716,174 +714,174 @@ def init_command(with_db, with_media, verbose, dry_run, site):
             verbose=verbose
         )
         if not success:
-            print("❌ Error en la configuración de rutas de medios")
+            print("❌ Error in media path configuration")
             sys.exit(1)
     
-    print("\n✅ Entorno de desarrollo inicializado correctamente")
-    print("🌟 ¡Listo para comenzar a trabajar!")
+    print("\n✅ Development environment initialized successfully")
+    print("🌟 Ready to start working!")
 
 @cli.command()
-@click.option('--path', '-p', help='Ruta dentro del contenedor DDEV donde buscar WordPress (obsoleto, usar sites.yaml)')
+@click.option('--path', '-p', help='Path inside DDEV container where to search WordPress (obsolete, use sites.yaml)')
 @site_option
 def verify_wp(path, site):
     """
-    Verifica si WordPress está correctamente instalado.
+    Verifies if WordPress is correctly installed.
     
-    Este comando ejecuta 'wp core is-installed' directamente 
-    utilizando la configuración de sites.yaml, sin depender
-    de archivos .ddev.
+    This command executes 'wp core is-installed' directly 
+    using sites.yaml configuration, without depending
+    on files .ddev.
     """
     from utils.wp_cli import run_wp_cli
     from config_yaml import get_yaml_config
     import os
     
-    # Obtener configuración de sitios
+    # Get sites configuration
     config = get_yaml_config()
     if not config.select_site(site):
         sys.exit(1)
     
-    print(f"🔍 Verificando instalación de WordPress...")
+    print(f"🔍 Verifying WordPress installation...")
     
-    # Obtener directorio local del proyecto desde la configuración
+    # Get project local directory from configuration
     if 'ssh' not in config.config or 'local_path' not in config.config['ssh']:
-        print("❌ Error: No se encontró configuración de ruta local en sites.yaml")
+        print("❌ Error: No local path configuration found in sites.yaml")
         sys.exit(1)
         
-    # Obtener la ruta local del proyecto directamente de sites.yaml
+    # Get project local directory directly from sites.yaml
     local_path_str = config.config['ssh']['local_path']
     
-    # Obtener el directorio base del proyecto
-    # Ejemplo: /home/user/proyecto/app/public -> /home/user/proyecto
+    # Get project base directory
+    # Example: /home/user/proyecto/app/public -> /home/user/proyecto
     local_path = Path(local_path_str)
-    project_dir = local_path.parent.parent  # Subir dos niveles desde app/public
+    project_dir = local_path.parent.parent  # Up two levels from app/public
     
-    print(f"ℹ️ Directorio del proyecto DDEV: {project_dir}")
+    print(f"ℹ️ Project DDEV directory: {project_dir}")
     
-    # Obtener la ruta wp_path desde los parámetros base_path y docroot (exigidos explícitamente)
+    # Get wp_path from base_path and docroot parameters (explicitly required)
     if 'ddev' not in config.config:
-        print("❌ Error: No se encontró sección 'ddev' en sites.yaml")
+        print("❌ Error: No ddev section found in sites.yaml")
         sys.exit(1)
         
-    # Exigir ambos parámetros explícitamente (fail fast)
+    # Explicitly require both parameters (fail fast)
     if 'base_path' not in config.config['ddev'] or 'docroot' not in config.config['ddev']:
-        print("❌ Error: Configuración DDEV incompleta en sites.yaml")
-        print("   Se requieren ambos parámetros:")
-        print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
-        print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
+        print("❌ Error: Complete DDEV configuration not found in sites.yaml")
+        print("   Both parameters are required:")
+        print("   - ddev.base_path: Base path inside container (e.g. \"/var/www/html\")")
+        print("   - ddev.docroot: Docroot directory (e.g. \"app/public\")")
         sys.exit(1)
     
-    # Construir la ruta wp_path con los parámetros configurados
+    # Build wp_path with configured parameters
     base_path = config.config['ddev']['base_path']
     docroot = config.config['ddev']['docroot']
     wp_path = f"{base_path}/{docroot}"
     
-    # Ignorar cualquier ruta pasada por parámetro (obsoleta)
+    # Ignore any path passed by parameter (obsolete)
     if path:
-        print("⚠️ Ignorando parámetro --path (obsoleto)")
-        print("   La ruta se obtiene automáticamente de sites.yaml (ddev.base_path + ddev.docroot)")
+        print("⚠️ Ignoring --path parameter (obsolete)")
+        print("   Path is obtained automatically from sites.yaml (ddev.base_path + ddev.docroot)")
     
-    print(f"ℹ️ Usando ruta WordPress dentro del contenedor: {wp_path}")
+    print(f"ℹ️ Using WordPress path inside container: {wp_path}")
         
-    # Verificar que el directorio existe en el sistema
+    # Verify that directory exists in the system
     if not project_dir.exists():
-        print(f"❌ Error: El directorio del proyecto '{project_dir}' no existe")
+        print(f"❌ Error: Project directory '{project_dir}' does not exist")
         sys.exit(1)
     
-    # Ejecutar verificación con la ruta especificada
+    # Execute verification with specified path
     code, stdout, stderr = run_wp_cli(
         ["core", "is-installed"],
-        project_dir,  # Ejecutar en el directorio del proyecto
+        project_dir,  # Execute in project directory
         remote=False,
         use_ddev=True,
         wp_path=wp_path
     )
     
-    # Mostrar resultado
+    # Show result
     if code == 0:
-        print("✅ WordPress está correctamente instalado y configurado")
+        print("✅ WordPress is correctly installed and configured")
         sys.exit(0)
     else:
-        print("❌ WordPress no está instalado o no se pudo detectar")
+        print("❌ WordPress is not installed or could not be detected")
         if stderr:
             print(f"   Error: {stderr}")
-        print(f"   Ruta utilizada: {wp_path}")
+        print(f"   Used path: {wp_path}")
         sys.exit(1)
 
 @cli.command()
 @site_option
 def show_ddev_config(site):
     """
-    Muestra la configuración WordPress de sites.yaml.
+    Shows the WordPress configuration from sites.yaml.
     
-    Útil para diagnosticar problemas relacionados con la ruta de WordPress.
+    Useful for diagnosing problems related to WordPress path.
     """
     import subprocess
     import os
     from config_yaml import get_yaml_config
     from pathlib import Path
     
-    # Obtener configuración de sitios
+    # Get sites configuration
     config = get_yaml_config()
     if not config.select_site(site):
         sys.exit(1)
     
-    print("🔍 Obteniendo configuración desde sites.yaml...")
+    print("🔍 Getting configuration from sites.yaml...")
     
-    # Verificar si existe configuración DDEV en sites.yaml
+    # Verify if DDEV configuration exists in sites.yaml
     if 'ddev' not in config.config:
-        print("❌ No se encontró configuración DDEV en sites.yaml")
+        print("❌ No DDEV configuration found in sites.yaml")
         sys.exit(1)
     
-    # Obtener directorio local del proyecto desde la configuración
+    # Get project local directory from configuration
     if 'ssh' not in config.config or 'local_path' not in config.config['ssh']:
-        print("❌ Error: No se encontró configuración de ruta local en sites.yaml")
+        print("❌ Error: No local path configuration found in sites.yaml")
         sys.exit(1)
         
-    # Mostrar información desde sites.yaml
-    print("📋 Configuración DDEV encontrada en sites.yaml:")
+    # Show information from sites.yaml
+    print("📋 DDEV configuration found in sites.yaml:")
     
     ddev_config = config.config['ddev']
     
-    # Verificar que existen ambos parámetros requeridos
+    # Verify that both required parameters exist
     if 'base_path' not in ddev_config or 'docroot' not in ddev_config:
-        print("❌ Error: Configuración DDEV incompleta en sites.yaml")
-        print("   Se requieren ambos parámetros:")
-        print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
-        print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
+        print("❌ Error: Complete DDEV configuration not found in sites.yaml")
+        print("   Both parameters are required:")
+        print("   - ddev.base_path: Base path inside container (e.g. \"/var/www/html\")")
+        print("   - ddev.docroot: Docroot directory (e.g. \"app/public\")")
         sys.exit(1)
     
-    # Mostrar información de la configuración actual
+    # Show information from current configuration
     base_path = ddev_config['base_path']
     docroot = ddev_config['docroot']
     wp_path = f"{base_path}/{docroot}"
     
     print(f"   - base_path: {base_path}")
     print(f"   - docroot: {docroot}")
-    print(f"   - Ruta WP completa: {wp_path}")
+    print(f"   - Complete WP path: {wp_path}")
     
-    # Obtener la ruta local del proyecto directamente de sites.yaml
+    # Get project local directory directly from sites.yaml
     local_path_str = config.config['ssh']['local_path']
     local_path = Path(local_path_str)
     
-    # Obtener el directorio base del proyecto
-    # Ejemplo: /home/user/proyecto/app/public -> /home/user/proyecto
-    project_dir = local_path.parent.parent  # Subir dos niveles desde app/public
+    # Get project base directory
+    # Example: /home/user/proyecto/app/public -> /home/user/proyecto
+    project_dir = local_path.parent.parent  # Up two levels from app/public
     
-    print(f"   - Directorio local del proyecto: {project_dir}")
+    print(f"   - Project local directory: {project_dir}")
     
-    # Verificar que el directorio existe
+    # Verify that directory exists
     if not project_dir.exists():
-        print(f"   ❌ El directorio del proyecto no existe: {project_dir}")
+        print(f"   ❌ Project directory does not exist: {project_dir}")
     else:
-        print(f"   ✅ El directorio del proyecto existe")
+        print(f"   ✅ Project directory exists")
     
-    # Ejecutar ddev describe para mostrar URLs (en el directorio correcto)
+    # Execute ddev describe to show URLs (in the correct directory)
     print("\n📡 DDEV describe:")
     
     try:
         result = subprocess.run(
             ["ddev", "describe"], 
-            cwd=project_dir,  # Ejecutar en el directorio del proyecto
+            cwd=project_dir,  # Execute in project directory
             capture_output=True, 
             text=True, 
             check=False
@@ -896,53 +894,52 @@ def show_ddev_config(site):
         else:
             print(f"   ❌ Error: {result.stderr}")
     except Exception as e:
-        print(f"   ❌ Error al ejecutar ddev describe: {str(e)}")
+        print(f"   ❌ Error executing ddev describe: {str(e)}")
     
-    # Sugerir comando para verificar WordPress
-    print(f"\n💡 Para verificar WordPress, ejecuta:")
+    # Suggest command to verify WordPress
+    print(f"\n💡 To verify WordPress, execute:")
     print(f"   python cli.py verify-wp --site={config.current_site}")
         
-    # Mostrar valores de URL
+    # Show URL values
     if 'urls' in config.config and 'remote' in config.config['urls']:
-        print(f"\n🌐 URL remota configurada: {config.config['urls']['remote']}")
+        print(f"\n🌐 Remote URL configured: {config.config['urls']['remote']}")
     if 'urls' in config.config and 'local' in config.config['urls']:
-        print(f"🖥️ URL local configurada: {config.config['urls']['local']}")
+        print(f"🖥️ Local URL configured: {config.config['urls']['local']}")
 
 @cli.command("backup")
-@click.option("--output-dir", help="Directorio donde guardar el backup (opcional)")
-@click.option("--verbose", "-v", is_flag=True, help="Mostrar información detallada durante la creación del backup")
+@click.option("--output-dir", help="Directory where to save the backup (optional)")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information during backup creation")
 @site_option
 def backup_command(output_dir, verbose, site):
     """
-    Crea un backup completo del entorno local.
+    Creates a full backup of the local environment.
     
-    Este comando genera un archivo ZIP con todos los archivos del entorno local,
-    independientemente de las exclusiones configuradas para la sincronización.
-    El backup incluye todos los archivos, incluidos los parches aplicados.
+    This command generates a ZIP file with all files from the local environment,
+    independently of the exclusions configured for synchronization.
+    The backup includes all files, including applied patches.
     
-    Si no se especifica un directorio de salida con --output-dir, el backup
-    se guardará en el directorio 'backups' dentro del directorio padre
-    del entorno local (un nivel arriba del directorio público de WordPress).
+    If no output directory is specified with --output-dir, the backup
+    will be saved in the parent directory of the local environment (one level above the WordPress public directory).
     
-    Ejemplos:
-      backup                      # Crea un backup en el directorio predeterminado
-      backup --output-dir /tmp    # Guarda el backup en /tmp
+    Examples:
+      backup                      # Creates a backup in the default directory
+      backup --output-dir /tmp    # Saves the backup in /tmp
     """
-    # Seleccionar sitio si es necesario
+    # Select site if necessary
     config = get_yaml_config(verbose=verbose)
     if not config.select_site(site):
         sys.exit(1)
         
     site_name = config.current_site or "wordpress"
     
-    print(f"📦 Creando backup completo del entorno local para '{site_name}'...")
+    print(f"📦 Creating full backup of local environment for '{site_name}'...")
     
     try:
         backup_path = create_full_backup(site_alias=site, output_dir=output_dir)
-        print(f"✅ Backup completado con éxito")
-        print(f"📂 Archivo guardado en: {backup_path}")
+        print(f"✅ Backup completed successfully")
+        print(f"📂 Backup saved in: {backup_path}")
     except Exception as e:
-        print(f"❌ Error al crear el backup: {str(e)}")
+        print(f"❌ Error creating backup: {str(e)}")
         if verbose:
             import traceback
             traceback.print_exc()
@@ -950,7 +947,7 @@ def backup_command(output_dir, verbose, site):
 
 def main():
     """
-    Punto de entrada principal
+    Main entry point
     """
     try:
         cli()

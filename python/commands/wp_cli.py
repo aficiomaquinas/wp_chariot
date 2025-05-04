@@ -1,5 +1,5 @@
 """
-Comandos para interactuar con WordPress a través de wp-cli
+Commands to interact with WordPress through wp-cli
 """
 
 import os
@@ -13,41 +13,41 @@ from utils.wp_cli import flush_cache, update_option, update_media_path
 
 def flush_wp_cache(args: Optional[List[str]] = None) -> int:
     """
-    Limpia la caché de WordPress
+    Clears the WordPress cache
     
     Args:
-        args: Lista de argumentos de línea de comandos
+        args: List of command line arguments
         
     Returns:
-        int: Código de salida (0 si éxito, 1 si error)
+        int: Exit code (0 if success, 1 if error)
     """
-    parser = argparse.ArgumentParser(description="Limpia la caché de WordPress")
+    parser = argparse.ArgumentParser(description="Clears the WordPress cache")
     
-    parser.add_argument("--remote", action="store_true", help="Ejecutar en el servidor remoto")
+    parser.add_argument("--remote", action="store_true", help="Run on the remote server")
     
     args = parser.parse_args(args)
     
-    # Cargar configuración
+    # Load configuration
     config = get_yaml_config()
     local_path = Path(get_nested(config, "ssh", "local_path"))
     remote_host = get_nested(config, "ssh", "remote_host")
     remote_path = get_nested(config, "ssh", "remote_path")
     
-    # Exigir explícitamente ambos parámetros (fail fast)
+    # Explicitly require both parameters (fail fast)
     base_path = get_nested(config, "ddev", "base_path")
     docroot = get_nested(config, "ddev", "docroot")
     
     if not base_path or not docroot:
-        print("❌ Error: Configuración DDEV incompleta en sites.yaml")
-        print("   Se requieren ambos parámetros:")
-        print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
-        print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
+        print("❌ Error: Incomplete DDEV configuration in sites.yaml")
+        print("   Both parameters are required:")
+        print("   - ddev.base_path: Base path inside the container (e.g. \"/var/www/html\")")
+        print("   - ddev.docroot: Docroot directory (e.g. \"app/public\")")
         return 1
         
-    # Construir la ruta WP completa
+    # Construct the full WP path
     ddev_wp_path = f"{base_path}/{docroot}"
     
-    # Limpiar caché
+    # Clear cache
     success = flush_cache(
         path=local_path,
         remote=args.remote,
@@ -61,43 +61,43 @@ def flush_wp_cache(args: Optional[List[str]] = None) -> int:
 
 def update_wp_option(args: Optional[List[str]] = None) -> int:
     """
-    Actualiza una opción de WordPress
+    Updates a WordPress option
     
     Args:
-        args: Lista de argumentos de línea de comandos
+        args: List of command line arguments
         
     Returns:
-        int: Código de salida (0 si éxito, 1 si error)
+        int: Exit code (0 if success, 1 if error)
     """
-    parser = argparse.ArgumentParser(description="Actualiza una opción de WordPress")
+    parser = argparse.ArgumentParser(description="Updates a WordPress option")
     
-    parser.add_argument("name", help="Nombre de la opción")
-    parser.add_argument("value", help="Valor de la opción")
-    parser.add_argument("--remote", action="store_true", help="Ejecutar en el servidor remoto")
+    parser.add_argument("name", help="Option name")
+    parser.add_argument("value", help="Option value")
+    parser.add_argument("--remote", action="store_true", help="Run on the remote server")
     
     args = parser.parse_args(args)
     
-    # Cargar configuración
+    # Load configuration
     config = get_yaml_config()
     local_path = Path(get_nested(config, "ssh", "local_path"))
     remote_host = get_nested(config, "ssh", "remote_host")
     remote_path = get_nested(config, "ssh", "remote_path")
     
-    # Exigir explícitamente ambos parámetros (fail fast)
+    # Explicitly require both parameters (fail fast)
     base_path = get_nested(config, "ddev", "base_path")
     docroot = get_nested(config, "ddev", "docroot")
     
     if not base_path or not docroot:
-        print("❌ Error: Configuración DDEV incompleta en sites.yaml")
-        print("   Se requieren ambos parámetros:")
-        print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
-        print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
+        print("❌ Error: Incomplete DDEV configuration in sites.yaml")
+        print("   Both parameters are required:")
+        print("   - ddev.base_path: Base path inside the container (e.g. \"/var/www/html\")")
+        print("   - ddev.docroot: Docroot directory (e.g. \"app/public\")")
         return 1
         
-    # Construir la ruta WP completa
+    # Construct the full WP path
     ddev_wp_path = f"{base_path}/{docroot}"
     
-    # Actualizar opción
+    # Update option
     success = update_option(
         option_name=args.name,
         option_value=args.value,
@@ -113,42 +113,42 @@ def update_wp_option(args: Optional[List[str]] = None) -> int:
 
 def update_wp_media_path(args: Optional[List[str]] = None) -> int:
     """
-    Actualiza la ruta de los medios en WordPress
+    Updates the media path in WordPress
     
     Args:
-        args: Lista de argumentos de línea de comandos
+        args: List of command line arguments
         
     Returns:
-        int: Código de salida (0 si éxito, 1 si error)
+        int: Exit code (0 if success, 1 if error)
     """
-    parser = argparse.ArgumentParser(description="Actualiza la ruta de los medios en WordPress")
+    parser = argparse.ArgumentParser(description="Updates the media path in WordPress")
     
-    parser.add_argument("path", help="Nueva ruta para los archivos de medios")
-    parser.add_argument("--remote", action="store_true", help="Ejecutar en el servidor remoto")
+    parser.add_argument("path", help="New path for media files")
+    parser.add_argument("--remote", action="store_true", help="Run on the remote server")
     
     args = parser.parse_args(args)
     
-    # Cargar configuración
+    # Load configuration
     config = get_yaml_config()
     local_path = Path(get_nested(config, "ssh", "local_path"))
     remote_host = get_nested(config, "ssh", "remote_host")
     remote_path = get_nested(config, "ssh", "remote_path")
     
-    # Exigir explícitamente ambos parámetros (fail fast)
+    # Explicitly require both parameters (fail fast)
     base_path = get_nested(config, "ddev", "base_path")
     docroot = get_nested(config, "ddev", "docroot")
     
     if not base_path or not docroot:
-        print("❌ Error: Configuración DDEV incompleta en sites.yaml")
-        print("   Se requieren ambos parámetros:")
-        print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
-        print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
+        print("❌ Error: Incomplete DDEV configuration in sites.yaml")
+        print("   Both parameters are required:")
+        print("   - ddev.base_path: Base path inside the container (e.g. \"/var/www/html\")")
+        print("   - ddev.docroot: Docroot directory (e.g. \"app/public\")")
         return 1
         
-    # Construir la ruta WP completa
+    # Construct the full WP path
     ddev_wp_path = f"{base_path}/{docroot}"
     
-    # Actualizar ruta de medios
+    # Update media path
     success = update_media_path(
         new_path=args.path,
         path=local_path,
@@ -162,21 +162,21 @@ def update_wp_media_path(args: Optional[List[str]] = None) -> int:
     return 0 if success else 1
 
 if __name__ == "__main__":
-    # Script principal para interactuar con WordPress
+    # Main script to interact with WordPress
     command_map = {
         "cache-flush": flush_wp_cache,
         "update-option": update_wp_option,
         "update-media-path": update_wp_media_path
     }
     
-    # Verificar argumentos
+    # Verify arguments
     if len(sys.argv) < 2 or sys.argv[1] not in command_map:
-        print("Uso: python -m wp_deploy.commands.wp_cli [comando] [opciones]")
-        print("Comandos disponibles:")
+        print("Usage: python -m wp_deploy.commands.wp_cli [command] [options]")
+        print("Available commands:")
         for cmd in command_map.keys():
             print(f"  {cmd}")
         sys.exit(1)
         
-    # Ejecutar comando
+    # Execute command
     command = sys.argv[1]
     sys.exit(command_map[command](sys.argv[2:]))

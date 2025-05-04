@@ -1,5 +1,5 @@
 """
-Utilidades para operaciones SSH con servidores remotos
+Utilities for SSH operations with remote servers
 """
 
 import os
@@ -11,32 +11,32 @@ import shlex
 
 class SSHClient:
     """
-    Cliente SSH para ejecutar comandos en servidores remotos
+    SSH Client to execute commands on remote servers
     """
     
     def __init__(self, host: str):
         """
-        Inicializa el cliente SSH
+        Initializes the SSH client
         
         Args:
-            host: Alias del host SSH (debe estar configurado en ~/.ssh/config)
+            host: SSH host alias (must be configured in ~/.ssh/config)
         """
         self.host = host
         self.client = None
         
     def connect(self) -> bool:
         """
-        Establece la conexión SSH con el servidor remoto
+        Establishes an SSH connection with the remote server
         
         Returns:
-            bool: True si la conexión fue exitosa, False en caso contrario
+            bool: True if the connection was successful, False otherwise
         """
         try:
             self.client = paramiko.SSHClient()
             self.client.load_system_host_keys()
             self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             
-            # Usar el archivo de configuración SSH del usuario
+            # Use the user's SSH configuration file
             ssh_config = paramiko.SSHConfig()
             user_config_file = os.path.expanduser("~/.ssh/config")
             
@@ -44,20 +44,20 @@ class SSHClient:
                 with open(user_config_file) as f:
                     ssh_config.parse(f)
                     
-                # Obtener la configuración para el host específico
+                # Get the configuration for the specific host
                 host_config = ssh_config.lookup(self.host)
                 
-                # Extraer parámetros de conexión
+                # Extract connection parameters
                 hostname = host_config.get('hostname', self.host)
                 port = int(host_config.get('port', 22))
                 username = host_config.get('user', os.getenv('USER', 'root'))
                 identity_file = host_config.get('identityfile', [None])[0]
                 
-                # Expandir la ruta del archivo de identidad
+                # Expand the identity file path
                 if identity_file:
                     identity_file = os.path.expanduser(identity_file)
                 
-                # Conectar usando la configuración
+                # Connect using the configuration
                 if identity_file:
                     self.client.connect(
                         hostname=hostname,
@@ -66,146 +66,146 @@ class SSHClient:
                         key_filename=identity_file
                     )
                 else:
-                    # Sin archivo de identidad, usar autenticación por contraseña o agente SSH
+                    # Without identity file, use password or SSH agent authentication
                     self.client.connect(
                         hostname=hostname,
                         port=port,
                         username=username
                     )
                 
-                print(f"✅ Conexión SSH establecida con {self.host} ({hostname})")
+                print(f"✅ SSH connection established with {self.host} ({hostname})")
                 return True
             else:
-                print(f"❌ No se encontró el archivo de configuración SSH: {user_config_file}")
+                print(f"❌ SSH configuration file not found: {user_config_file}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Error al conectar con {self.host}: {str(e)}")
+            print(f"❌ Error connecting to {self.host}: {str(e)}")
             return False
             
     def disconnect(self):
         """
-        Cierra la conexión SSH
+        Closes the SSH connection
         """
         if self.client:
             self.client.close()
-            print(f"✅ Conexión SSH cerrada con {self.host}")
+            print(f"✅ SSH connection closed with {self.host}")
             
     def __enter__(self):
         """
-        Soporte para el patrón with
+        Support for the with pattern
         """
         self.connect()
         return self
         
     def __exit__(self, exc_type, exc_val, exc_tb):
         """
-        Cierra la conexión al salir del bloque with
+        Closes the connection when exiting the with block
         """
         self.disconnect()
         
     def execute(self, command: str) -> Tuple[int, str, str]:
         """
-        Ejecuta un comando en el servidor remoto
+        Executes a command on the remote server
         
         Args:
-            command: Comando a ejecutar
+            command: Command to execute
             
         Returns:
-            Tuple[int, str, str]: Código de salida, salida estándar, salida de error
+            Tuple[int, str, str]: Exit code, standard output, error output
         """
         if not self.client:
-            print("❌ No hay conexión SSH establecida")
-            return (1, "", "No hay conexión SSH establecida")
+            print("❌ No SSH connection established")
+            return (1, "", "No SSH connection established")
             
         try:
-            print(f"🔄 Ejecutando comando remoto: {command}")
+            print(f"🔄 Executing remote command: {command}")
             stdin, stdout, stderr = self.client.exec_command(command)
             
-            # Leer la salida
+            # Read the output
             stdout_str = stdout.read().decode('utf-8')
             stderr_str = stderr.read().decode('utf-8')
             exit_code = stdout.channel.recv_exit_status()
             
             if exit_code != 0:
-                print(f"⚠️ El comando devolvió código de salida {exit_code}")
+                print(f"⚠️ The command returned exit code {exit_code}")
                 if stderr_str:
                     print(f"Error: {stderr_str}")
             
             return (exit_code, stdout_str, stderr_str)
             
         except Exception as e:
-            print(f"❌ Error al ejecutar comando remoto: {str(e)}")
+            print(f"❌ Error executing remote command: {str(e)}")
             return (1, "", str(e))
             
     def upload_file(self, local_path: Path, remote_path: str) -> bool:
         """
-        Sube un archivo al servidor remoto
+        Uploads a file to the remote server
         
         Args:
-            local_path: Ruta local del archivo
-            remote_path: Ruta remota donde guardar el archivo
+            local_path: Local path of the file
+            remote_path: Remote path where to save the file
             
         Returns:
-            bool: True si la transferencia fue exitosa, False en caso contrario
+            bool: True if the transfer was successful, False otherwise
         """
         if not self.client:
-            print("❌ No hay conexión SSH establecida")
+            print("❌ No SSH connection established")
             return False
             
         try:
-            # Crear un cliente SFTP
+            # Create an SFTP client
             sftp = self.client.open_sftp()
             
-            # Asegurarse de que el directorio remoto existe
+            # Ensure the remote directory exists
             remote_dir = os.path.dirname(remote_path)
             self.execute(f"mkdir -p {shlex.quote(remote_dir)}")
             
-            # Transferir el archivo
-            print(f"📤 Subiendo archivo {local_path} -> {remote_path}")
+            # Transfer the file
+            print(f"📤 Uploading file {local_path} -> {remote_path}")
             sftp.put(str(local_path), remote_path)
             sftp.close()
             
-            print(f"✅ Archivo subido correctamente")
+            print(f"✅ File uploaded successfully")
             return True
             
         except Exception as e:
-            print(f"❌ Error al subir archivo: {str(e)}")
+            print(f"❌ Error uploading file: {str(e)}")
             return False
             
     def download_file(self, remote_path: str, local_path: Path) -> bool:
         """
-        Descarga un archivo del servidor remoto
+        Downloads a file from the remote server
         
         Args:
-            remote_path: Ruta remota del archivo
-            local_path: Ruta local donde guardar el archivo
+            remote_path: Remote path of the file
+            local_path: Local path where to save the file
             
         Returns:
-            bool: True si la transferencia fue exitosa, False en caso contrario
+            bool: True if the transfer was successful, False otherwise
         """
         if not self.client:
-            print("❌ No hay conexión SSH establecida")
+            print("❌ No SSH connection established")
             return False
             
         try:
-            # Crear un cliente SFTP
+            # Create an SFTP client
             sftp = self.client.open_sftp()
             
-            # Asegurarse de que el directorio local existe
+            # Ensure the local directory exists
             local_dir = local_path.parent
             local_dir.mkdir(parents=True, exist_ok=True)
             
-            # Transferir el archivo
-            print(f"📥 Descargando archivo {remote_path} -> {local_path}")
+            # Transfer the file
+            print(f"📥 Downloading file {remote_path} -> {local_path}")
             sftp.get(remote_path, str(local_path))
             sftp.close()
             
-            print(f"✅ Archivo descargado correctamente")
+            print(f"✅ File downloaded successfully")
             return True
             
         except Exception as e:
-            print(f"❌ Error al descargar archivo: {str(e)}")
+            print(f"❌ Error downloading file: {str(e)}")
             return False
 
 
@@ -220,50 +220,50 @@ def run_rsync(
     verbose: bool = False
 ) -> Tuple[bool, str]:
     """
-    Ejecuta rsync para sincronizar archivos
+    Executes rsync to synchronize files
     
     Args:
-        source: Origen de la sincronización (puede ser local o remoto)
-        dest: Destino de la sincronización (puede ser local o remoto)
-        options: Opciones adicionales para rsync
-        exclusions: Diccionario de patrones a excluir (clave -> patrón)
-        dry_run: Si es True, no realiza cambios reales (simulación)
-        ssh_options: Opciones adicionales para SSH
-        capture_output: Si es True, captura la salida en lugar de mostrarla
-        verbose: Si es True, muestra la salida detallada en tiempo real
+        source: Source of the synchronization (can be local or remote)
+        dest: Destination of the synchronization (can be local or remote)
+        options: Additional options for rsync
+        exclusions: Dictionary of patterns to exclude (key -> pattern)
+        dry_run: If True, does not make real changes (simulation)
+        ssh_options: Additional options for SSH
+        capture_output: If True, captures the output instead of displaying it
+        verbose: If True, shows detailed output in real time
         
     Returns:
-        Tuple[bool, str]: True si la sincronización fue exitosa, False en caso contrario,
-                          y la salida del comando
+        Tuple[bool, str]: True if the synchronization was successful, False otherwise,
+                          and the command output
     """
-    # Opciones predeterminadas
+    # Default options
     if options is None:
         options = ["-avzh", "--delete"]
         
-    # Añadir opción de simulación si es necesario
+    # Add simulation option if necessary
     if dry_run:
         options.append("--dry-run")
         
-    # Configurar SSH
+    # Configure SSH
     ssh_cmd = "ssh"
     if ssh_options:
         ssh_cmd = f"ssh {ssh_options}"
         
-    # Construir comando base
+    # Build base command
     cmd = ["rsync", "-e", ssh_cmd]
     
-    # Añadir opciones
+    # Add options
     cmd.extend(options)
     
-    # Verificar exclusiones
+    # Verify exclusions
     if exclusions is None:
-        print("⚠️ No se proporcionaron exclusiones")
+        print("⚠️ No exclusions provided")
         exclusions = {}
     elif not isinstance(exclusions, dict):
-        print("⚠️ El formato de exclusiones no es válido, se ignorarán")
+        print("⚠️ The exclusion format is not valid, they will be ignored")
         exclusions = {}
     
-    # Crear archivo temporal de exclusiones si es necesario
+    # Create temporary exclusion file if necessary
     exclude_file = None
     exclusion_count = 0
     
@@ -271,24 +271,24 @@ def run_rsync(
         import tempfile
         exclude_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
         
-        # Solo mostrar los patrones si estamos en modo verbose
+        # Only show patterns if we are in verbose mode
         if verbose:
-            print(f"📋 Aplicando {len(exclusions)} patrones de exclusión:")
+            print(f"📋 Applying {len(exclusions)} exclusion patterns:")
         
         try:
-            # Asegurarse de que exclusions es un diccionario
+            # Make sure exclusions is a dictionary
             if isinstance(exclusions, dict):
                 for key, pattern in exclusions.items():
-                    if pattern:  # Solo añadir si el patrón no es None o vacío
+                    if pattern:  # Only add if the pattern is not None or empty
                         if verbose:
                             print(f"   - {key}: {pattern}")
                         exclude_file.write(f"- {pattern}\n")
                         exclusion_count += 1
         except Exception as e:
-            print(f"⚠️ Error al procesar exclusiones: {str(e)}")
-            print("Continuando sin exclusiones...")
+            print(f"⚠️ Error processing exclusions: {str(e)}")
+            print("Continuing without exclusions...")
             
-            # Cerrar y eliminar el archivo temporal
+            # Close and delete the temporary file
             try:
                 exclude_file.close()
                 os.unlink(exclude_file.name)
@@ -301,23 +301,23 @@ def run_rsync(
             exclude_file.close()
             cmd.extend(["--filter", f"merge {exclude_file.name}"])
             if verbose:
-                print(f"✅ Se aplicaron {exclusion_count} patrones de exclusión")
+                print(f"✅ Applied {exclusion_count} exclusion patterns")
     elif verbose:
-        print("⚠️ No hay exclusiones definidas, se sincronizarán todos los archivos")
+        print("⚠️ No exclusions defined, all files will be synchronized")
     
-    # Añadir origen y destino
+    # Add source and destination
     cmd.append(source)
     cmd.append(dest)
     
-    # Ejecutar comando
+    # Execute command
     cmd_str = " ".join([shlex.quote(str(arg)) for arg in cmd])
-    print(f"🔄 Ejecutando: {cmd_str}")
+    print(f"🔄 Executing: {cmd_str}")
     
     try:
         output = []
         
         if capture_output and not verbose:
-            # Capturar la salida sin mostrarla en tiempo real
+            # Capture output without displaying it in real time
             process = subprocess.run(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -331,7 +331,7 @@ def run_rsync(
             return_code = process.returncode
             
         else:
-            # Ejecutar con salida en tiempo real
+            # Execute with real-time output
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -349,7 +349,7 @@ def run_rsync(
             process.wait()
             return_code = process.returncode
         
-        # Limpiar archivo temporal
+        # Clean up temporary file
         if exclude_file:
             try:
                 os.unlink(exclude_file.name)
@@ -357,19 +357,19 @@ def run_rsync(
                 pass
             
         if return_code == 0:
-            print("✅ Sincronización completada con éxito")
+            print("✅ Synchronization completed successfully")
             return True, "\n".join(output)
         else:
-            print(f"❌ Error en la sincronización (código {return_code})")
+            print(f"❌ Error in synchronization (code {return_code})")
             return False, "\n".join(output)
             
     except Exception as e:
-        # Limpiar archivo temporal en caso de error
+        # Clean up temporary file in case of error
         if exclude_file:
             try:
                 os.unlink(exclude_file.name)
             except:
                 pass
         
-        print(f"❌ Error al ejecutar rsync: {str(e)}")
+        print(f"❌ Error executing rsync: {str(e)}")
         return False, str(e) 

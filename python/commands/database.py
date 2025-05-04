@@ -1,8 +1,8 @@
 """
-Módulo para sincronización de base de datos entre entornos
+Database synchronization module between environments
 
-Este módulo proporciona funciones para sincronizar la base de datos
-entre un servidor remoto y el entorno local.
+This module provides functions to synchronize the database
+between a remote server and the local environment.
 """
 
 import os
@@ -22,23 +22,23 @@ from utils.wp_cli import run_wp_cli
 
 class DatabaseSynchronizer:
     """
-    Clase para sincronizar bases de datos entre entornos
+    Class to synchronize databases between environments
     """
     
     def __init__(self, verbose=False):
         """
-        Inicializa el sincronizador de bases de datos
+        Initializes the database synchronizer
         
         Args:
-            verbose: Si es True, muestra mensajes de depuración detallados
+            verbose: If True, displays detailed debug messages
         """
-        # Guardar nivel de verbosidad
+        # Save verbosity level
         self.verbose = verbose
         
-        # Cargar la configuración usando el sistema de sitios
+        # Load configuration using the site system
         config_obj = get_yaml_config(verbose=self.verbose)
         
-        # Valores predeterminados por si no se puede cargar la configuración
+        # Default values in case configuration can't be loaded
         self.remote_host = "example-server"
         self.remote_path = ""
         self.local_path = Path(".")
@@ -50,30 +50,30 @@ class DatabaseSynchronizer:
         self.remote_db_host = "localhost"
         self.production_safety = True
         
-        # Cargar valores de la configuración
+        # Load values from configuration
         if config_obj:
-            # Obtener la configuración como diccionario
+            # Get configuration as dictionary
             config = config_obj.config
             
-            # Cargar configuración SSH
+            # Load SSH configuration
             if 'ssh' in config:
                 ssh_config = config['ssh']
                 self.remote_host = ssh_config.get('remote_host', self.remote_host)
                 self.remote_path = ssh_config.get('remote_path', self.remote_path)
                 self.local_path = Path(ssh_config.get('local_path', str(self.local_path)))
             
-            # Cargar configuración de seguridad
+            # Load security configuration
             if 'security' in config:
                 security_config = config['security']
                 self.production_safety = security_config.get('production_safety', 'enabled') == 'enabled'
             
-            # Cargar configuración de URLs
+            # Load URLs configuration
             if 'urls' in config:
                 urls_config = config['urls']
                 self.remote_url = urls_config.get('remote', self.remote_url)
                 self.local_url = urls_config.get('local', self.local_url)
             
-            # Cargar configuración de base de datos remota
+            # Load remote database configuration
             if 'database' in config and 'remote' in config['database']:
                 db_config = config['database']['remote']
                 self.remote_db_name = db_config.get('name', self.remote_db_name)
@@ -81,105 +81,105 @@ class DatabaseSynchronizer:
                 self.remote_db_pass = db_config.get('password', self.remote_db_pass)
                 self.remote_db_host = db_config.get('host', self.remote_db_host)
         
-        # Asegurarse de que las URLs no terminen con /
+        # Ensure URLs don't end with /
         if self.remote_url.endswith("/"):
             self.remote_url = self.remote_url[:-1]
             
         if self.local_url.endswith("/"):
             self.local_url = self.local_url[:-1]
         
-        # Debug para verificar qué configuración se está cargando (solo si verbose es True)
+        # Debug to verify what configuration is being loaded (only if verbose is True)
         if self.verbose:
-            print("📋 Configuración cargada:")
+            print("📋 Configuration loaded:")
             print(f"   - SSH: {self.remote_host}:{self.remote_path}")
             print(f"   - URLs: {self.remote_url} → {self.local_url}")
             print(f"   - DB Host: {self.remote_db_host}")
             print(f"   - DB User: {self.remote_db_user}")
             print(f"   - DB Name: {self.remote_db_name}")
-            print(f"   - DB Pass: {'*' * len(self.remote_db_pass) if self.remote_db_pass else 'no configurada'}")
+            print(f"   - DB Pass: {'*' * len(self.remote_db_pass) if self.remote_db_pass else 'not configured'}")
         else:
-            # Mostrar información mínima en modo normal
-            print(f"📋 Configuración: {self.remote_host} → {self.remote_url} ⟷ {self.local_url}")
+            # Display minimal information in normal mode
+            print(f"📋 Configuration: {self.remote_host} → {self.remote_url} ⟷ {self.local_url}")
         
-        # Guardar referencia a config para métodos que la necesitan
+        # Save reference to config for methods that need it
         self.config = {'security': {'backups': 'disabled'}}
         if config_obj and hasattr(config_obj, 'config'):
             self.config = config_obj.config
             
-            # Verificar si tenemos configuración de DDEV y mostrarla si estamos en modo detallado
+            # Check if we have DDEV configuration and display it if in verbose mode
             if self.verbose and 'ddev' in self.config:
-                ddev_webroot = self.config.get('ddev', {}).get('webroot', 'No configurada')
+                ddev_webroot = self.config.get('ddev', {}).get('webroot', 'Not configured')
                 print(f"   - DDEV webroot: {ddev_webroot}")
         
-        # Verificar si se están usando valores por defecto
-        default_values = ["example-server", "nombre_db_remota", "usuario_db_remota", "contraseña_db_remota"]
+        # Check if default values are being used
+        default_values = ["example-server", "remote_db_name", "remote_db_user", "remote_db_password"]
         if any(val in default_values for val in [self.remote_host, self.remote_db_name, self.remote_db_user]):
-            print("⚠️ ADVERTENCIA: Se están usando valores predeterminados en la configuración.")
-            print("   Verifique que el archivo config.yaml está correctamente configurado.")
+            print("⚠️ WARNING: Default values are being used in the configuration.")
+            print("   Verify that the config.yaml file is correctly configured.")
         
     def check_remote_connection(self) -> bool:
         """
-        Verifica la conexión con el servidor remoto
+        Verifies the connection with the remote server
         
         Returns:
-            bool: True si la conexión es exitosa, False en caso contrario
+            bool: True if the connection is successful, False otherwise
         """
-        print(f"🔄 Verificando conexión con el servidor remoto: {self.remote_host}")
+        print(f"🔄 Checking connection to remote server: {self.remote_host}")
         
         with SSHClient(self.remote_host) as ssh:
             if not ssh.client:
                 return False
                 
-            # Verificar acceso a la ruta remota
+            # Verify access to remote path
             cmd = f"test -d {self.remote_path} && echo 'OK' || echo 'NOT_FOUND'"
             code, stdout, stderr = ssh.execute(cmd)
             
             if code != 0:
-                print(f"❌ Error al verificar ruta remota: {stderr}")
+                print(f"❌ Error checking remote path: {stderr}")
                 return False
                 
             if "OK" not in stdout:
-                print(f"❌ La ruta remota no existe: {self.remote_path}")
+                print(f"❌ Remote path does not exist: {self.remote_path}")
                 return False
                 
-            print(f"✅ Conexión verificada con éxito")
+            print(f"✅ Connection verified successfully")
             return True
             
     def check_remote_database(self) -> bool:
         """
-        Verifica la conexión a la base de datos remota
+        Verifies the connection to the remote database
         
         Returns:
-            bool: True si la conexión a la base de datos es exitosa, False en caso contrario
+            bool: True if the database connection is successful, False otherwise
         """
-        print(f"🔄 Verificando conexión a la base de datos remota...")
+        print(f"🔄 Checking connection to remote database...")
         
-        # Verificar que las credenciales no son valores predeterminados
-        default_credentials = ["nombre_db_remota", "usuario_db_remota", "contraseña_db_remota"]
+        # Check that credentials are not default values
+        default_credentials = ["remote_db_name", "remote_db_user", "remote_db_password"]
         if self.remote_db_name in default_credentials or self.remote_db_user in default_credentials:
-            print(f"❌ Error: Las credenciales de base de datos parecen ser valores predeterminados")
-            print("   Es probable que no se estén cargando correctamente las variables del archivo .env")
-            print("   Revise las siguientes claves en el archivo de configuración o .env:")
-            print("   - REMOTE_DB_NAME: Base de datos remota")
-            print("   - REMOTE_DB_USER: Usuario de base de datos")
-            print("   - REMOTE_DB_PASS: Contraseña de la base de datos")
+            print(f"❌ Error: Remote database credentials appear to be default values")
+            print("   It's likely that the variables from the .env file are not being loaded correctly")
+            print("   Check the following keys in the configuration or .env file:")
+            print("   - REMOTE_DB_NAME: Remote database")
+            print("   - REMOTE_DB_USER: Database user")
+            print("   - REMOTE_DB_PASS: Database password")
             return False
             
         if not self.remote_db_name or not self.remote_db_user:
-            print(f"❌ Error: Faltan credenciales de base de datos remota")
+            print(f"❌ Error: Missing remote database credentials")
             return False
             
         with SSHClient(self.remote_host) as ssh:
             if not ssh.client:
                 return False
                 
-            # Verificar directamente con las credenciales configuradas
-            # Método seguro: crear archivo local y subirlo, sin mostrar la contraseña en el registro
+            # Verify directly with configured credentials
+            # Secure method: create local file and upload it, without showing the password in the log
             import hashlib, random, string
             import tempfile
             import os
             
-            # Crear un archivo temporal local con la configuración
+            # Create a local temporary file with the configuration
             with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_file:
                 temp_file_path = temp_file.name
                 temp_file.write(f"[client]\n")
@@ -189,11 +189,11 @@ class DatabaseSynchronizer:
                 temp_file.flush()
             
             try:
-                # Generar un nombre de archivo temporal único en el servidor
+                # Generate a unique temporary filename on the server
                 random_suffix = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
                 file_hash = hashlib.md5(f"{self.remote_db_name}_{random_suffix}".encode()).hexdigest()
                 
-                # Evitar el doble slash cuando remote_path ya termina con /
+                # Avoid double slash when remote_path already ends with /
                 if self.remote_path.endswith('/'):
                     remote_temp_dir = f"{self.remote_path}wp-content"
                 else:
@@ -201,89 +201,88 @@ class DatabaseSynchronizer:
                     
                 remote_temp_pass = f"{remote_temp_dir}/.wp_deploy_tmp_{file_hash}.cnf"
                 
-                # Subir el archivo al servidor
+                # Upload the file to the server
                 if self.verbose:
-                    print(f"🔒 Subiendo configuración de conexión segura...")
+                    print(f"🔒 Uploading secure connection configuration...")
                 
                 if not ssh.upload_file(temp_file_path, remote_temp_pass):
-                    print("❌ Error al subir configuración de conexión")
+                    print("❌ Error uploading connection configuration")
                     return False
                 
-                # Establecer permisos correctos
+                # Set correct permissions
                 ssh.execute(f"chmod 600 {remote_temp_pass}")
                 
-                # Comando MySQL seguro que usa el archivo de configuración temporal
+                # Secure MySQL command that uses the temporary configuration file
                 mysql_check_cmd = (
                     f"mysql --defaults-extra-file={remote_temp_pass} "
                     f"-e 'SHOW DATABASES LIKE \"{self.remote_db_name}\";'"
                 )
                 
-                # Ejecutar el comando para verificar la conexión
+                # Execute the command to verify the connection
                 code, stdout, stderr = ssh.execute(mysql_check_cmd)
                 
-                # Analizar resultado
+                # Analyze result
                 if code != 0:
-                    print(f"❌ Error al conectar con MySQL: {stderr}")
-                    print("   Verifique las credenciales de base de datos en la configuración:")
+                    print(f"❌ Error when connecting to MySQL: {stderr}")
+                    print("   Verify the database credentials in the configuration:")
                     print(f"   - Host: {self.remote_db_host}")
-                    print(f"   - Usuario: {self.remote_db_user}")
-                    print(f"   - Base de datos: {self.remote_db_name}")
+                    print(f"   - User: {self.remote_db_user}")
+                    print(f"   - Database: {self.remote_db_name}")
                     return False
                     
                 if self.remote_db_name not in stdout:
-                    print(f"❌ La base de datos '{self.remote_db_name}' no existe o no es accesible")
-                    print("   Verifique el nombre de la base de datos en la configuración")
+                    print(f"❌ The database '{self.remote_db_name}' does not exist or is not accessible")
+                    print("   Verify the database name in the configuration")
                     return False
                 
-                # Verificar que también podemos conectarnos usando wp-cli
-                # (esto verifica que WordPress está correctamente configurado)
+                # Check that we can also connect using wp-cli
+                # (this verifies that WordPress is correctly configured)
                 code, stdout, stderr = run_wp_cli(
                     ["db", "check"],
-                    path=".",  # No importa aquí, se usa remote_path
+                    path=".",  # Doesn't matter here, remote_path is used
                     remote=True,
                     remote_host=self.remote_host,
                     remote_path=self.remote_path
                 )
                 
                 if code != 0:
-                    print(f"⚠️ WordPress puede no estar correctamente configurado: {stderr}")
+                    print(f"⚠️ WordPress may not be correctly configured: {stderr}")
                     if self.verbose:
-                        print("   La conexión directa a MySQL funciona, pero wp-cli no puede conectarse.")
-                        print("   Esto podría indicar un problema con el archivo wp-config.php")
-                    # No fallamos aquí porque la conexión directa a MySQL sí funciona
-                    
-                print(f"✅ Conexión a la base de datos remota verificada con éxito")
-                if self.verbose:
-                    print(f"   Base de datos: {self.remote_db_name}@{self.remote_db_host}")
+                        print(f"   Output: {stdout}")
+                    # Don't return False here, as sometimes wp-cli might not work but MySQL does
+                    # We're more interested in the MySQL connection than WordPress configuration
+                
+                # Clean up the temporary file on the server before returning
+                ssh.execute(f"rm -f {remote_temp_pass}")
+                
                 return True
                 
             finally:
-                # Eliminar el archivo temporal independientemente del resultado
-                if os.path.exists(temp_file_path):
+                # Always clean up the local temporary file
+                try:
                     os.unlink(temp_file_path)
+                except:
+                    pass
                 
-                # Eliminar el archivo temporal en el servidor
-                ssh.execute(f"rm -f {remote_temp_pass}")
-            
     def export_remote_db(self) -> Optional[str]:
         """
-        Exporta la base de datos remota a un archivo SQL
+        Exports the remote database to a SQL file
         
         Returns:
-            Optional[str]: Ruta al archivo de exportación o None si falló
+            Optional[str]: Path to the export file or None if failed
         """
-        print(f"📤 Exportando base de datos remota '{self.remote_db_name}'...")
+        print(f"📤 Exporting remote database '{self.remote_db_name}'...")
         
-        # Verificar conexión
+        # Verify connection
         if not self.check_remote_connection():
             return None
             
-        # Crear directorio temporal para el archivo SQL
+        # Create temporary directory for the SQL file
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         temp_dir = Path(tempfile.gettempdir()) / f"wp-deploy-{timestamp}"
         ensure_dir_exists(temp_dir)
         
-        # Evitar doble slash en rutas remotas
+        # Avoid double slash in remote paths
         if self.remote_path.endswith('/'):
             remote_sql_file = f"{self.remote_path}wp-content/db-export-{timestamp}.sql"
         else:
@@ -291,9 +290,9 @@ class DatabaseSynchronizer:
         
         local_sql_file = temp_dir / f"db-export-{timestamp}.sql"
         
-        # Obtener información sobre el charset de la base de datos
+        # Get information about the charset of the database
         with SSHClient(self.remote_host) as ssh:
-            print("🔍 Obteniendo información sobre el charset de la base de datos...")
+            print("🔍 Getting information about the database charset...")
             charset_cmd = (
                 f"cd {self.remote_path} && "
                 f"wp db query 'SHOW VARIABLES LIKE \"%character%\";' --skip-column-names"
@@ -305,75 +304,75 @@ class DatabaseSynchronizer:
                     for line in charset_info:
                         if 'character_set_database' in line:
                             db_charset = line.split()[1]
-                            print(f"   - Charset de la base de datos: {db_charset}")
+                            print(f"   - Database charset: {db_charset}")
                         elif 'character_set_connection' in line:
                             conn_charset = line.split()[1]
-                            print(f"   - Charset de conexión: {conn_charset}")
+                            print(f"   - Connection charset: {conn_charset}")
             except Exception as e:
-                print(f"   ⚠️ No se pudo obtener información del charset: {str(e)}")
+                print(f"   ⚠️ Unable to get charset information: {str(e)}")
         
-        # Crear comando de exportación con opciones explícitas de charset
+        # Create export command with explicit charset options
         export_cmd = (
             f"cd {self.remote_path} && "
             f"wp db export {remote_sql_file} --add-drop-table"
         )
         
-        # Ejecutar comando de exportación en el servidor remoto
+        # Execute export command on the remote server
         with SSHClient(self.remote_host) as ssh:
-            print("⚙️ Ejecutando exportación en el servidor remoto...")
+            print("⚙️ Executing export on the remote server...")
             code, stdout, stderr = ssh.execute(export_cmd)
             
             if code != 0:
-                print(f"❌ Error al exportar base de datos remota: {stderr}")
+                print(f"❌ Error exporting remote database: {stderr}")
                 return None
                 
-            # Descargar archivo SQL
-            print(f"⬇️ Descargando archivo SQL ({remote_sql_file})...")
+            # Download SQL file
+            print(f"⬇️ Downloading SQL file ({remote_sql_file})...")
             success = ssh.download_file(remote_sql_file, local_sql_file)
             
             if not success:
-                print("❌ Error al descargar archivo SQL")
-                print(f"   El archivo permanece en el servidor: {remote_sql_file}")
+                print("❌ Error downloading SQL file")
+                print(f"   File remains on the server: {remote_sql_file}")
                 return None
                 
-            # Solo eliminamos el archivo si la descarga fue exitosa
-            print(f"🧹 Limpiando archivo temporal en el servidor...")
+            # Only delete the file if the download was successful
+            print(f"🧹 Cleaning temporary file on the server...")
             ssh.execute(f"rm {remote_sql_file}")
             
-        print(f"✅ Base de datos exportada exitosamente a {local_sql_file}")
+        print(f"✅ Remote database exported successfully to {local_sql_file}")
         
-        # Mostrar información sobre el archivo descargado
+        # Display information about the downloaded file
         file_size_mb = os.path.getsize(local_sql_file) / (1024*1024)
-        print(f"   - Tamaño del archivo: {file_size_mb:.2f} MB")
+        print(f"   - File size: {file_size_mb:.2f} MB")
         
         return str(local_sql_file)
 
     def export_local_db(self) -> Optional[str]:
         """
-        Exporta la base de datos local (DDEV) a un archivo SQL
+        Exports the local database (DDEV) to a SQL file
         
         Returns:
-            Optional[str]: Ruta al archivo de exportación o None si falló
+            Optional[str]: Path to the export file or None if failed
         """
-        print(f"📤 Exportando base de datos local (DDEV)...")
+        print(f"📤 Exporting local database (DDEV)...")
         
-        # Verificar que DDEV está instalado
+        # Verify that DDEV is installed
         try:
             subprocess.run(["ddev", "--version"], capture_output=True, check=True)
         except (subprocess.SubprocessError, FileNotFoundError):
-            print("❌ DDEV no está instalado o no está en el PATH")
+            print("❌ DDEV is not installed or not in the PATH")
             return None
 
-        # Crear directorio temporal para el archivo SQL
+        # Create temporary directory for the SQL file
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         temp_dir = Path(tempfile.gettempdir()) / f"wp-deploy-{timestamp}"
         ensure_dir_exists(temp_dir)
         
         local_sql_file = temp_dir / f"db-export-local-{timestamp}.sql"
         
-        # Exportar base de datos local usando DDEV
+        # Export local database using DDEV
         try:
-            print("⚙️ Ejecutando exportación en el entorno local...")
+            print("⚙️ Executing export on the local environment...")
             result = subprocess.run(
                 ["ddev", "export-db", "-f", str(local_sql_file)],
                 cwd=self.local_path.parent,
@@ -382,69 +381,69 @@ class DatabaseSynchronizer:
             )
             
             if result.returncode != 0:
-                print(f"❌ Error al exportar base de datos local: {result.stderr}")
+                print(f"❌ Error exporting local database: {result.stderr}")
                 return None
                 
-            print(f"✅ Base de datos local exportada exitosamente a {local_sql_file}")
+            print(f"✅ Local database exported successfully to {local_sql_file}")
             return str(local_sql_file)
             
         except Exception as e:
-            print(f"❌ Error durante la exportación: {str(e)}")
+            print(f"❌ Error during export: {str(e)}")
             return None
         
     def search_replace_urls(self, sql_file: str, reverse: bool = False) -> Optional[str]:
         """
-        Reemplaza URLs en el archivo SQL exportado
+        Replaces URLs in the exported SQL file
         
         Args:
-            sql_file: Ruta al archivo SQL
-            reverse: Si es True, reemplaza local->remoto en lugar de remoto->local
+            sql_file: Path to the SQL file
+            reverse: If True, replaces local->remote instead of remote->local
             
         Returns:
-            Optional[str]: Ruta al archivo procesado, None si hubo error
+            Optional[str]: Path to the processed file, None if there was an error
         """
         if not sql_file or not os.path.exists(sql_file):
-            print(f"❌ Archivo SQL no encontrado: {sql_file}")
+            print(f"❌ SQL file not found: {sql_file}")
             return None
             
-        # Ya no modificamos el archivo SQL, el reemplazo se hará después de importar
+        # We no longer modify the SQL file, the replacement will be done after importing
         if reverse:
-            print(f"ℹ️ Las URLs se reemplazarán después de importar: {self.local_url} -> {self.remote_url}")
+            print(f"ℹ️ URLs will be replaced after importing: {self.local_url} -> {self.remote_url}")
         else:
-            print(f"ℹ️ Las URLs se reemplazarán después de importar: {self.remote_url} -> {self.local_url}")
+            print(f"ℹ️ URLs will be replaced after importing: {self.remote_url} -> {self.local_url}")
             
-        # Solo informar el tamaño del archivo
+        # Only inform the file size
         file_size = os.path.getsize(sql_file)
-        print(f"   - Tamaño del archivo: {file_size / (1024*1024):.2f} MB")
+        print(f"   - File size: {file_size / (1024*1024):.2f} MB")
         
-        return sql_file  # Devolvemos el mismo archivo sin procesar
+        return sql_file  # We return the same unprocessed file
             
     def import_to_local(self, sql_file: str) -> bool:
         """
-        Importa el archivo SQL al entorno local (DDEV)
+        Imports the SQL file to the local environment (DDEV)
         
         Args:
-            sql_file: Ruta al archivo SQL a importar
+            sql_file: Path to the SQL file to import
             
         Returns:
-            bool: True si la importación fue exitosa, False en caso contrario
+            bool: True if the import was successful, False otherwise
         """
         if not sql_file or not os.path.exists(sql_file):
-            print(f"❌ Archivo SQL no encontrado: {sql_file}")
+            print(f"❌ SQL file not found: {sql_file}")
             return False
             
-        print(f"📥 Importando base de datos a entorno local (DDEV)...")
+        print(f"📥 Importing database to local environment (DDEV)...")
         
-        # Verificar que DDEV está instalado
+        # Verify that DDEV is installed
         try:
             subprocess.run(["ddev", "--version"], capture_output=True, check=True)
         except (subprocess.SubprocessError, FileNotFoundError):
-            print("❌ DDEV no está instalado o no está en el PATH")
+            print("❌ DDEV is not installed or not in the PATH")
             return False
             
-        # Crear copia de seguridad de la base de datos local si está configurado
+        # Create backup of local database if configured
         if self.config.get('security', {}).get('backups', 'disabled') == "enabled":
-            print("📦 Creando copia de seguridad de la base de datos local...")
+            print("📦 Creating local database backup...")
             try:
                 timestamp = time.strftime("%Y%m%d-%H%M%S")
                 backup_dir = Path(self.local_path).parent / "db-backups"
@@ -459,65 +458,65 @@ class DatabaseSynchronizer:
                 )
                 
                 if result.returncode == 0:
-                    print(f"✅ Copia de seguridad creada en {backup_file}")
+                    print(f"✅ Backup created in {backup_file}")
                 else:
-                    print(f"⚠️ No se pudo crear copia de seguridad: {result.stderr}")
+                    print(f"⚠️ Unable to create backup: {result.stderr}")
                     
             except Exception as e:
-                print(f"⚠️ Error al crear copia de seguridad: {str(e)}")
+                print(f"⚠️ Error creating backup: {str(e)}")
                 
-        # Asegurarse de que el archivo tenga la extensión correcta
+        # Ensure the file has the correct extension
         if not sql_file.endswith('.sql'):
             new_sql_file = f"{sql_file.split('.')[0]}.sql"
             try:
                 os.rename(sql_file, new_sql_file)
                 sql_file = new_sql_file
-                print(f"✅ Archivo renombrado para asegurar compatibilidad: {sql_file}")
+                print(f"✅ File renamed to ensure compatibility: {sql_file}")
             except Exception as e:
-                print(f"⚠️ No se pudo renombrar el archivo: {str(e)}")
+                print(f"⚠️ Unable to rename file: {str(e)}")
         
-        # Verificar el inicio del archivo SQL para detectar posibles problemas
+        # Verify the start of the SQL file for potential problems
         try:
             with open(sql_file, 'rb') as f:
-                header = f.read(4096)  # Leer los primeros 4KB
+                header = f.read(4096)  # Read the first 4KB
                 
-                # Verificar si parece un archivo SQL válido
+                # Verify if it looks like a valid SQL file
                 if not header.startswith(b"-- ") and not header.startswith(b"/*") and b"CREATE TABLE" not in header and b"INSERT INTO" not in header:
-                    print("⚠️ El archivo SQL podría no ser válido o tener un formato inesperado")
-                    print("   Se intentará importar de todos modos pero podría fallar")
+                    print("⚠️ The SQL file might not be valid or have an unexpected format")
+                    print("   We'll try to import anyway but it might fail")
         except Exception as e:
-            print(f"⚠️ No se pudo verificar el contenido del archivo SQL: {str(e)}")
+            print(f"⚠️ Unable to verify SQL file content: {str(e)}")
             
-        # Importar el SQL a DDEV
+        # Import the SQL to DDEV
         try:
-            print(f"⚙️ Importando archivo SQL a DDEV...")
-            print(f"   Archivo: {sql_file}")
-            print(f"   Tamaño: {os.path.getsize(sql_file) / (1024*1024):.2f} MB")
+            print(f"⚙️ Importing SQL file to DDEV...")
+            print(f"   File: {sql_file}")
+            print(f"   Size: {os.path.getsize(sql_file) / (1024*1024):.2f} MB")
             
-            # Obtener la ruta de WordPress dentro del contenedor desde la configuración (sites.yaml)
+            # Get the WordPress path inside the container from the configuration (sites.yaml)
             ddev_wp_path = None
             if hasattr(self, 'config') and isinstance(self.config, dict) and 'ddev' in self.config:
                 ddev_config = self.config.get('ddev', {})
-                # Exigir explícitamente ambos parámetros (fail fast)
+                # Explicitly require both parameters (fail fast)
                 if 'base_path' not in ddev_config or 'docroot' not in ddev_config:
-                    print("❌ Error: Configuración DDEV incompleta en sites.yaml")
-                    print("   Se requieren ambos parámetros:")
-                    print("   - ddev.base_path: Ruta base dentro del contenedor (ej: \"/var/www/html\")")
-                    print("   - ddev.docroot: Directorio del docroot (ej: \"app/public\")")
+                    print("❌ Error: DDEV configuration incomplete in sites.yaml")
+                    print("   Both parameters are required:")
+                    print("   - ddev.base_path: Base path inside the container (e.g. \"/var/www/html\")")
+                    print("   - ddev.docroot: Docroot directory (e.g. \"app/public\")")
                     return False
                 
-                # Construir la ruta WP completa
+                # Construct the full WP path
                 base_path = ddev_config.get('base_path')
                 docroot = ddev_config.get('docroot')
                 ddev_wp_path = f"{base_path}/{docroot}"
-                print(f"ℹ️ Usando ruta WordPress: {ddev_wp_path}")
+                print(f"ℹ️ Using WordPress path: {ddev_wp_path}")
             else:
-                print("❌ Error: No se encontró configuración DDEV en sites.yaml")
-                print("   Se requiere la sección 'ddev' con 'base_path' y 'docroot'")
+                print("❌ Error: DDEV configuration not found in sites.yaml")
+                print("   'ddev' section with 'base_path' and 'docroot' is required")
                 return False
             
-            # Usar un comando más explícito con todas las opciones completas
-            # para diagnosticar mejor cualquier error
+            # Use a more explicit command with all complete options
+            # to diagnose any error better
             result = subprocess.run(
                 ["ddev", "import-db", "--file", sql_file, "--database", "db"],
                 cwd=self.local_path.parent,
@@ -526,119 +525,119 @@ class DatabaseSynchronizer:
             )
             
             if result.returncode != 0:
-                print(f"❌ Error al importar base de datos:")
-                print(f"   - Código de error: {result.returncode}")
+                print(f"❌ Error importing database:")
+                print(f"   - Error code: {result.returncode}")
                 if result.stderr:
                     print(f"   - Error: {result.stderr}")
                 if result.stdout:
-                    print(f"   - Salida: {result.stdout}")
+                    print(f"   - Output: {result.stdout}")
                     
-                # Verificar errores comunes
+                # Verify common errors
                 error_output = result.stderr + result.stdout
                 if "ERROR 1180" in error_output or "Operation not permitted" in error_output:
-                    print("\n⚠️ Se detectó un error de operación no permitida durante la importación.")
-                    print("   Este error suele ocurrir por problemas de permisos o restricciones en el sistema de archivos.")
-                    print("   Recomendaciones:")
-                    print("   1. Asegúrate de que el usuario tiene permisos de escritura en el directorio")
-                    print("   2. Verifica que no hay bloqueos en la base de datos")
-                    print("   3. Intenta reimportar con un archivo más pequeño o fragmentado")
+                    print("\n⚠️ Operation not permitted error detected.")
+                    print("   This error usually occurs due to permission issues or restrictions in the file system.")
+                    print("   Recommendations:")
+                    print("   1. Ensure the user has write permissions in the directory")
+                    print("   2. Verify that there are no locks on the database")
+                    print("   3. Try importing with a smaller or fragmented file")
                 
                 elif "Unknown character set" in error_output:
-                    print("\n⚠️ Se detectó un error de conjunto de caracteres desconocido.")
-                    print("   Esto puede ocurrir cuando el SQL contiene declaraciones de charset que MySQL/MariaDB no reconoce.")
-                    print("   Recomendaciones:")
-                    print("   1. Edita el archivo SQL para cambiar las declaraciones de charset")
-                    print("   2. Usa una herramienta como 'sed' para corregir estos problemas")
+                    print("\n⚠️ Unknown character set error detected.")
+                    print("   This may occur when the SQL contains charset declarations that MySQL/MariaDB does not recognize.")
+                    print("   Recommendations:")
+                    print("   1. Edit the SQL file to change charset declarations")
+                    print("   2. Use a tool like 'sed' to correct these issues")
                     
-                # Intentar un enfoque alternativo de importación directa por MySQL
-                print("\n🔄 Intentando método alternativo de importación...")
+                # Try an alternative approach of direct import by MySQL
+                print("\n🔄 Trying alternative import method...")
                 try:
                     alt_result = subprocess.run(
                         ["ddev", "mysql", "db", "<", sql_file],
                         cwd=self.local_path.parent,
-                        shell=True,  # Necesario para la redirección
+                        shell=True,  # Necessary for redirection
                         capture_output=True,
                         text=True
                     )
                     
                     if alt_result.returncode == 0:
-                        print("✅ Importación alternativa exitosa usando MySQL directo")
-                        # Continuar con el flujo de éxito
+                        print("✅ Alternative import succeeded using direct MySQL")
+                        # Continue with success flow
                     else:
-                        print(f"❌ También falló el método alternativo: {alt_result.stderr}")
+                        print(f"❌ Also failed alternative method: {alt_result.stderr}")
                         return False
                             
                 except Exception as alt_e:
-                    print(f"❌ Error en método alternativo: {str(alt_e)}")
+                    print(f"❌ Error in alternative method: {str(alt_e)}")
                     return False
                     
-                # Si llegamos aquí es porque el método alternativo tuvo éxito
+                # If we get here, the alternative method succeeded
                     
-            print("✅ Base de datos importada exitosamente")
+            print("✅ Database imported successfully")
             
-            # Ejecutar WP CLI para asegurarse de que todo funciona
-            print("⚙️ Verificando instalación de WordPress...")
+            # Execute WP CLI to ensure everything works
+            print("⚙️ Verifying WordPress installation...")
             
             if ddev_wp_path:
-                print(f"   Usando ruta WordPress: {ddev_wp_path}")
+                print(f"   Using WordPress path: {ddev_wp_path}")
             else:
-                print("   ⚠️ No se encontró ruta WordPress en la configuración")
+                print("   ⚠️ WordPress path not found in configuration")
             
-            # Usar la función run_wp_cli para verificar la instalación con la ruta correcta
+            # Use run_wp_cli function to verify installation with the correct path
             code, stdout, stderr = run_wp_cli(
                 ["core", "is-installed"],
                 self.local_path.parent,
                 remote=False,
                 use_ddev=True,
-                wp_path=ddev_wp_path  # Pasar la ruta obtenida de la configuración
+                wp_path=ddev_wp_path  # Pass the path obtained from configuration
             )
             
             if code != 0:
-                print("❌ WordPress no está instalado o no se pudo detectar")
-                print("   La base de datos se importó correctamente, pero la verificación de WordPress falló")
+                print("❌ WordPress is not installed or not detected")
+                print("   Database imported successfully, but WordPress verification failed")
                 if stderr:
                     print(f"   Error: {stderr}")
             else:
-                print("✅ WordPress verificado correctamente")
+                print("✅ WordPress verified successfully")
                 
             return True
             
         except Exception as e:
-            print(f"❌ Error durante la importación: {str(e)}")
+            print(f"❌ Error during import: {str(e)}")
             return False
 
     def import_to_remote(self, sql_file: str) -> bool:
         """
-        Importa el archivo SQL al servidor remoto
+        Imports the SQL file to the remote server
         
         Args:
-            sql_file: Ruta al archivo SQL a importar
+            sql_file: Path to the SQL file to import
             
         Returns:
-            bool: True si la importación fue exitosa, False en caso contrario
+            bool: True if the import was successful, False otherwise
         """
         if not sql_file or not os.path.exists(sql_file):
-            print(f"❌ Archivo SQL no encontrado: {sql_file}")
+            print(f"❌ SQL file not found: {sql_file}")
             return False
             
-        print(f"📤 Importando base de datos al servidor remoto...")
+        print(f"📤 Importing database to remote server...")
         
-        # Verificar conexión
+        # Verify connection
         if not self.check_remote_connection():
             return False
             
-        # Verificar si el archivo está comprimido con gzip
+        # Verify if the file is compressed with gzip
         is_gzipped = False
         with open(sql_file, 'rb') as f:
             header = f.read(2)
-            if header == b'\x1f\x8b':  # Cabecera gzip
+            if header == b'\x1f\x8b':  # gzip header
                 is_gzipped = True
-                print("📦 Detectado archivo SQL comprimido (gzip)")
+                print("📦 Detected compressed SQL file (gzip)")
         
-        # Crear nombre para el archivo SQL temporal en el servidor
+        # Create temporary filename for the SQL file on the server
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         
-        # Construir ruta remota
+        # Construct remote path
         if self.remote_path.endswith('/'):
             remote_sql_file = f"{self.remote_path}wp-content/db-import-{timestamp}.sql"
         else:
@@ -647,146 +646,146 @@ class DatabaseSynchronizer:
         if is_gzipped:
             remote_sql_file += ".gz"
         
-        # Subir archivo SQL al servidor
+        # Upload SQL file to the server
         with SSHClient(self.remote_host) as ssh:
-            print(f"⬆️ Subiendo archivo SQL al servidor...")
+            print(f"⬆️ Uploading SQL file to the server...")
             
-            # Crear directorio remoto
+            # Create remote directory
             ssh.execute(f"mkdir -p {os.path.dirname(remote_sql_file)}")
             
-            # Subir archivo usando método estándar
+            # Upload file using standard method
             if not ssh.upload_file(sql_file, remote_sql_file):
-                print("❌ Error al subir archivo SQL")
+                print("❌ Error uploading SQL file")
                 return False
                 
-            # Importar correctamente según si está comprimido o no
-            print("⚙️ Importando base de datos en el servidor remoto...")
+            # Import correctly based on whether it's compressed or not
+            print("⚙️ Importing database to the remote server...")
             
-            # Usar zcat para archivos comprimidos, cat para normales
+            # Use zcat for compressed files, cat for normal ones
             cat_cmd = "zcat" if is_gzipped else "cat"
             import_cmd = f"cd {self.remote_path} && {cat_cmd} {remote_sql_file} | wp db import -"
             
-            # Ejecutar comando de importación
+            # Execute import command
             code, stdout, stderr = ssh.execute(import_cmd)
             
-            # Eliminar archivo temporal
+            # Delete temporary file
             ssh.execute(f"rm {remote_sql_file}")
             
             if code != 0:
-                print(f"❌ Error al importar base de datos: {stderr}")
+                print(f"❌ Error importing database: {stderr}")
                 return False
                 
-            # Limpiar caché
-            print("🧹 Limpiando caché en el servidor remoto...")
+            # Clean cache
+            print("🧹 Cleaning cache on the remote server...")
             ssh.execute(f"cd {self.remote_path} && wp cache flush")
             
-            print("✅ Base de datos importada exitosamente al servidor remoto")
+            print("✅ Database imported successfully to the remote server")
             return True
 
     def sync(self, direction: str = "from-remote", dry_run: bool = False) -> bool:
         """
-        Sincroniza la base de datos entre entornos
+        Synchronizes the database between environments
         
         Args:
-            direction: Dirección de la sincronización ("from-remote" o "to-remote")
-            dry_run: Si es True, solo muestra qué se haría
+            direction: Synchronization direction ("from-remote" or "to-remote")
+            dry_run: If True, only shows what would be done
             
         Returns:
-            bool: True si la sincronización fue exitosa, False en caso contrario
+            bool: True if the synchronization was successful, False otherwise
         """
         if direction == "from-remote":
-            print(f"📥 Sincronizando base de datos desde el servidor remoto al entorno local...")
+            print(f"📥 Synchronizing database from remote server to local environment...")
             
-            # Verificar conexión incluso en modo dry-run
+            # Verify connection even in dry-run mode
             if not self.check_remote_connection():
-                print("❌ No se puede continuar sin una conexión remota válida")
+                print("❌ Unable to continue without a valid remote connection")
                 return False
             
-            # Verificar información de base de datos remota
+            # Verify remote database information
             if not self.remote_db_name:
-                print("❌ Error: No se ha configurado el nombre de la base de datos remota")
-                print("   Por favor, establezca database.remote.name en el archivo de configuración.")
+                print("❌ Error: Remote database name not configured")
+                print("   Please set database.remote.name in the configuration file.")
                 return False
                 
-            # Verificar conexión a la base de datos remota
+            # Verify remote database connection
             if not self.check_remote_database():
-                print("❌ No se puede continuar sin una conexión a la base de datos remota válida")
+                print("❌ Unable to continue without a valid remote database connection")
                 return False
                 
-            # Verificar que DDEV está instalado
+            # Verify that DDEV is installed
             try:
                 subprocess.run(["ddev", "--version"], capture_output=True, check=True)
             except (subprocess.SubprocessError, FileNotFoundError):
-                print("❌ DDEV no está instalado o no está en el PATH")
-                print("   Se requiere DDEV para la sincronización con el entorno local")
+                print("❌ DDEV is not installed or not in the PATH")
+                print("   DDEV is required for synchronization with the local environment")
                 return False
                 
             if dry_run:
-                print("🔄 Modo simulación: No se realizarán cambios reales")
-                print(f"   - Se exportaría la base de datos remota '{self.remote_db_name}'")
-                print(f"   - Se importaría a DDEV (entorno local)")
-                print(f"   - Se reemplazaría URL: {self.remote_url} -> {self.local_url} usando wp-cli")
+                print("🔄 Dry run mode: No real changes will be made")
+                print(f"   - Remote database '{self.remote_db_name}' would be exported")
+                print(f"   - Imported to DDEV (local environment)")
+                print(f"   - URLs would be replaced: {self.remote_url} -> {self.local_url} using wp-cli")
                 return True
                 
-            # Proceso real
-            # 1. Exportar base de datos remota
+            # Real process
+            # 1. Export remote database
             sql_file = self.export_remote_db()
             if not sql_file:
                 return False
                 
-            # 2. Importar a local (sin modificar el archivo)
+            # 2. Import to local (without modifying the file)
             success = self.import_to_local(sql_file)
             if not success:
                 return False
                 
-            # 3. Reemplazar URLs usando wp-cli (después de importar)
-            print(f"🔄 Reemplazando URLs en la base de datos...")
+            # 3. Replace URLs using wp-cli (after importing)
+            print(f"🔄 Replacing URLs in the database...")
             
-            # Obtener dominios sin protocolo
+            # Get domains without protocol
             remote_domain = self.remote_url.replace("https://", "").replace("http://", "")
             local_domain = self.local_url.replace("https://", "").replace("http://", "")
             
-            print(f"   - Cambiando: {self.remote_url} -> {self.local_url}")
+            print(f"   - Changing: {self.remote_url} -> {self.local_url}")
             
-            # Lista completa de patrones a reemplazar para cubrir todos los casos posibles
+            # Full list of patterns to replace to cover all possible cases
             replacements = [
-                # URLs con protocolo completo
+                # URLs with full protocol
                 (self.remote_url, self.local_url),
                 
-                # URLs sin protocolo (//example.com)
+                # URLs without protocol (//example.com)
                 (f"//{remote_domain}", f"//{local_domain}"),
             ]
             
-            # Si la URL remota usa HTTPS, añadir variante HTTP para asegurar que todas las URLs se reemplazan
+            # If the remote URL uses HTTPS, add HTTP variant to ensure all URLs are replaced
             if self.remote_url.startswith("https://"):
                 http_remote = self.remote_url.replace("https://", "http://")
                 replacements.append((http_remote, self.local_url))
             
-            # Variantes con www y sin www
-            # Añadir variantes con www si no están presentes
+            # www and non-www variants
+            # Add www variants if not present
             if not remote_domain.startswith("www."):
                 www_remote_domain = f"www.{remote_domain}"
-                # Con protocolo
+                # With protocol
                 if "://" in self.remote_url:
                     protocol = self.remote_url.split("://")[0]
                     www_remote_url = f"{protocol}://{www_remote_domain}"
                     replacements.append((www_remote_url, self.local_url))
-                # Sin protocolo
+                # Without protocol
                 replacements.append((f"//{www_remote_domain}", f"//{local_domain}"))
-            # O variantes sin www si están presentes
+            # Or non-www variants if present
             elif remote_domain.startswith("www."):
                 non_www_remote_domain = remote_domain.replace("www.", "")
-                # Con protocolo
+                # With protocol
                 if "://" in self.remote_url:
                     protocol = self.remote_url.split("://")[0]
                     non_www_remote_url = f"{protocol}://{non_www_remote_domain}"
                     replacements.append((non_www_remote_url, self.local_url))
-                # Sin protocolo
+                # Without protocol
                 replacements.append((f"//{non_www_remote_domain}", f"//{local_domain}"))
             
-            # Ejecutar cada reemplazo
+            # Execute each replacement
             for source, target in replacements:
-                print(f"   - Reemplazando: {source} -> {target}")
+                print(f"   - Replacing: {source} -> {target}")
                 code, stdout, stderr = run_wp_cli(
                     ["search-replace", source, target, "--all-tables", "--precise", "--skip-columns=guid"],
                     self.local_path.parent,
@@ -795,10 +794,10 @@ class DatabaseSynchronizer:
                 )
                 
                 if code != 0 and self.verbose:
-                    print(f"   - Advertencia: {stderr}")
+                    print(f"   - Warning: {stderr}")
             
-            # Limpiar transients después de reemplazar URLs
-            print("🧹 Limpiando transients para evitar referencias antiguas...")
+            # Clean transients after replacing URLs
+            print("🧹 Cleaning transients to avoid old references...")
             code, stdout, stderr = run_wp_cli(
                 ["transient", "delete", "--all"],
                 self.local_path.parent,
@@ -807,13 +806,13 @@ class DatabaseSynchronizer:
             )
             
             if code != 0 and self.verbose:
-                print(f"   - Advertencia al limpiar transients: {stderr}")
+                print(f"   - Warning cleaning transients: {stderr}")
             else:
-                print("   - Transients eliminados correctamente")
+                print("   - Transients cleaned successfully")
             
-            print("✅ Todos los patrones de URL han sido reemplazados")
+            print("✅ All URL patterns replaced")
             
-            # 4. Limpiar archivos temporales
+            # 4. Clean temporary files
             try:
                 os.unlink(sql_file)
             except:
@@ -822,62 +821,62 @@ class DatabaseSynchronizer:
             return success
             
         else:  # to-remote
-            print(f"📤 Sincronizando base de datos desde el entorno local al servidor remoto...")
+            print(f"📤 Synchronizing database from local environment to remote server...")
             
-            # Verificar protección de producción
+            # Verify production protection
             if self.production_safety:
-                print("⛔ No se puede subir la base de datos a producción con la protección activada.")
-                print("   Para continuar, desactiva 'production_safety' en la configuración:")
+                print("⛔ Unable to upload database to production with protection activated.")
+                print("   To continue, disable 'production_safety' in the configuration:")
                 print("   security:")
                 print("     production_safety: disabled")
                 return False
                 
-            # Verificar conexiones
+            # Verify connections
             if not self.check_remote_connection():
                 return False
                 
             if not self.check_remote_database():
                 return False
                 
-            # Verificar DDEV
+            # Verify DDEV
             try:
                 subprocess.run(["ddev", "--version"], capture_output=True, check=True)
             except (subprocess.SubprocessError, FileNotFoundError):
-                print("❌ DDEV no está instalado o no está en el PATH")
+                print("❌ DDEV is not installed or not in the PATH")
                 return False
                 
-            # Modo simulación
+            # Dry run
             if dry_run:
-                print("🔄 Modo simulación: No se realizarán cambios reales")
-                print("   - Se exportaría la base de datos local")
-                print("   - Se importaría al servidor remoto")
-                print(f"   - Se reemplazaría URL: {self.local_url} -> {self.remote_url} en el servidor")
+                print("🔄 Dry run mode: No real changes will be made")
+                print("   - Local database would be exported")
+                print("   - Imported to remote")
+                print(f"   - URLs would be replaced: {self.local_url} -> {self.remote_url} on the server")
                 return True
                 
-            # Confirmación
-            print("⚠️ ADVERTENCIA: Estás a punto de sobrescribir la base de datos de PRODUCCIÓN.")
-            confirm = input("   ¿Estás COMPLETAMENTE SEGURO de continuar? (escriba 'SI CONFIRMO' para continuar): ")
+            # Confirmation
+            print("⚠️ WARNING: You are about to overwrite the production database.")
+            confirm = input("   ¿Are you COMPLETELY SURE to continue? (type 'SI CONFIRMO' to continue): ")
             
             if confirm != "SI CONFIRMO":
-                print("❌ Operación cancelada por el usuario.")
+                print("❌ Operation cancelled by user.")
                 return False
                 
-            print("⚡ Confirmación recibida. Procediendo con la operación...")
+            print("⚡ Confirmation received. Proceeding with the operation...")
             
-            # 1. Exportar base de datos local directamente
+            # 1. Export local database directly
             sql_file = self.export_local_db()
             if not sql_file:
                 return False
                 
-            # 2. Importar a remoto
+            # 2. Import to remote
             success = self.import_to_remote(sql_file)
             if not success:
                 return False
                 
-            # 3. Reemplazar URLs en el servidor
-            print(f"🔄 Reemplazando URLs en el servidor remoto...")
+            # 3. Replace URLs on the server
+            print(f"🔄 Replacing URLs on the remote server...")
             
-            # Patrones de reemplazo
+            # Replacement patterns
             remote_domain = self.remote_url.replace("https://", "").replace("http://", "")
             local_domain = self.local_url.replace("https://", "").replace("http://", "")
             
@@ -886,15 +885,15 @@ class DatabaseSynchronizer:
                 (f"//{local_domain}", f"//{remote_domain}"),
             ]
             
-            # Añadir variante HTTP si la URL usa HTTPS
+            # Add HTTP variant if the URL uses HTTPS
             if self.local_url.startswith("https://"):
                 http_local = self.local_url.replace("https://", "http://")
                 replacements.append((http_local, self.remote_url))
             
             try:
-                # Ejecutar reemplazos en el servidor
+                # Execute replacements on the server
                 for source, target in replacements:
-                    print(f"   - Reemplazando: {source} -> {target}")
+                    print(f"   - Replacing: {source} -> {target}")
                     code, _, stderr = run_wp_cli(
                         ["search-replace", source, target, "--all-tables", "--precise", "--skip-columns=guid"],
                         path=".",
@@ -906,7 +905,7 @@ class DatabaseSynchronizer:
                     if code != 0:
                         print(f"   ⚠️ Error: {stderr}")
                 
-                # Limpiar transients
+                # Clean transients
                 run_wp_cli(
                     ["transient", "delete", "--all"],
                     path=".",
@@ -915,12 +914,12 @@ class DatabaseSynchronizer:
                     remote_path=self.remote_path
                 )
                 
-                print("✅ Reemplazo de URLs completado en el servidor remoto")
+                print("✅ URLs replacement completed on the remote server")
             except Exception as e:
-                print(f"❌ Error al reemplazar URLs en servidor remoto: {str(e)}")
+                print(f"❌ Error replacing URLs on remote server: {str(e)}")
                 return False
             
-            # Limpiar archivos temporales
+            # Clean temporary files
             try:
                 os.unlink(sql_file)
             except:
@@ -930,15 +929,15 @@ class DatabaseSynchronizer:
             
 def sync_database(direction: str = "from-remote", dry_run: bool = False, verbose: bool = False) -> bool:
     """
-    Sincroniza la base de datos entre entornos
+    Synchronizes the database between environments
     
     Args:
-        direction: Dirección de la sincronización ("from-remote" o "to-remote")
-        dry_run: Si es True, solo muestra qué se haría
-        verbose: Si es True, muestra mensajes de depuración detallados
+        direction: Synchronization direction ("from-remote" or "to-remote")
+        dry_run: If True, only shows what would be done
+        verbose: If True, displays detailed debug messages
         
     Returns:
-        bool: True si la sincronización fue exitosa, False en caso contrario
+        bool: True if the synchronization was successful, False otherwise
     """
     synchronizer = DatabaseSynchronizer(verbose=verbose)
     return synchronizer.sync(direction=direction, dry_run=dry_run) 

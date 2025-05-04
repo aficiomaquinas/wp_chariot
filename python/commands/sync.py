@@ -1,8 +1,8 @@
 """
-Módulo para sincronización de archivos entre entornos
+File synchronization module between environments
 
-Este módulo proporciona funciones para sincronizar archivos entre
-un servidor remoto y el entorno local mediante rsync.
+This module provides functions to synchronize files between
+a remote server and the local environment using rsync.
 """
 
 import os
@@ -20,49 +20,49 @@ from commands.backup import create_full_backup
 
 class FileSynchronizer:
     """
-    Clase para sincronizar archivos entre entornos
+    Class for synchronizing files between environments
     """
     
     def __init__(self):
         """
-        Inicializa el sincronizador de archivos
+        Initializes the file synchronizer
         """
         self.config = get_yaml_config()
         
-        # Cargar configuración
+        # Load configuration
         self.remote_host = self.config.get("ssh", "remote_host")
         self.remote_path = self.config.get("ssh", "remote_path")
         self.local_path = Path(self.config.get("ssh", "local_path"))
         
-        # Asegurarse de que las rutas remotas terminen con un solo / 
+        # Ensure remote paths end with a single / 
         self.remote_path = self.remote_path.rstrip('/') + '/'
             
-        # Cargar exclusiones
+        # Load exclusions
         self.exclusions = self.config.get_exclusions()
         
-        # Cargar archivos protegidos
+        # Load protected files
         self.protected_files = self.config.get_protected_files()
         
-        # Cargar límite de memoria para WP-CLI
+        # Load memory limit for WP-CLI
         self.wp_memory_limit = self.config.get_wp_memory_limit()
         
     def _load_patched_files(self) -> List[str]:
         """
-        Carga la lista de archivos con parches registrados y sus backups desde el archivo lock
+        Loads the list of patched files and their backups from the lock file
         
         Returns:
-            List[str]: Lista de archivos con parches registrados y sus backups
+            List[str]: List of patched files and their backups
         """
         try:
             from commands.patch import PatchManager
             
-            # Crear instancia del PatchManager para acceder a sus métodos
+            # Create PatchManager instance to access its methods
             patch_manager = PatchManager()
             
-            # Usar el método _load_patched_files del PatchManager que devuelve tuplas (archivo, backup)
+            # Use the _load_patched_files method from PatchManager that returns tuples (file, backup)
             patched_tuples = patch_manager._load_patched_files()
             
-            # Convertir las tuplas a una lista plana de archivos para exclusión
+            # Convert tuples to a flat list of files for exclusion
             patched_files = []
             for file_path, backup_path in patched_tuples:
                 if file_path:
@@ -73,28 +73,28 @@ class FileSynchronizer:
             return patched_files
             
         except Exception as e:
-            print(f"⚠️ Error al cargar archivo de parches: {str(e)}")
+            print(f"⚠️ Error loading patch file: {str(e)}")
             return []
         
     def _prepare_paths(self, direction: str) -> Tuple[str, str]:
         """
-        Prepara las rutas de origen y destino según la dirección
+        Prepares the source and destination paths according to the direction
         
         Args:
-            direction: Dirección de la sincronización ("from-remote" o "to-remote")
+            direction: Direction of synchronization ("from-remote" or "to-remote")
             
         Returns:
-            Tuple[str, str]: Rutas de origen y destino
+            Tuple[str, str]: Source and destination paths
         """
-        # Asegurarse de que la ruta remota no termine con múltiples /
+        # Ensure the remote path doesn't end with multiple /
         remote_path = self.remote_path.rstrip('/')
         
         if direction == "from-remote":
-            # Desde remoto a local
+            # From remote to local
             source = f"{self.remote_host}:{remote_path}"
             dest = str(self.local_path)
         else:
-            # Desde local a remoto
+            # From local to remote
             source = str(self.local_path)
             dest = f"{self.remote_host}:{remote_path}"
             
@@ -102,776 +102,660 @@ class FileSynchronizer:
         
     def check_remote_connection(self) -> bool:
         """
-        Verifica la conexión con el servidor remoto
+        Verifies the connection with the remote server
         
         Returns:
-            bool: True si la conexión es exitosa, False en caso contrario
+            bool: True if the connection is successful, False otherwise
         """
-        print(f"🔄 Verificando conexión con el servidor remoto: {self.remote_host}")
+        print(f"🔄 Checking connection with remote server: {self.remote_host}")
         
         with SSHClient(self.remote_host) as ssh:
             if not ssh.client:
                 return False
                 
-            # Verificar acceso a la ruta remota
+            # Verify access to remote path
             cmd = f"test -d {self.remote_path} && echo 'OK' || echo 'NOT_FOUND'"
             code, stdout, stderr = ssh.execute(cmd)
             
             if code != 0:
-                print(f"❌ Error al verificar ruta remota: {stderr}")
+                print(f"❌ Error checking remote path: {stderr}")
                 return False
                 
             if "OK" not in stdout:
-                print(f"❌ La ruta remota no existe: {self.remote_path}")
+                print(f"❌ Remote path does not exist: {self.remote_path}")
                 return False
                 
-            print(f"✅ Conexión verificada con éxito")
+            print(f"✅ Connection verified successfully")
             return True
             
     def diff(self, dry_run: bool = True, show_all: bool = False, verbose: bool = False, only_patches: bool = False) -> bool:
         """
-        Muestra las diferencias entre el servidor remoto y el entorno local.
-        Este método siempre es de solo lectura y nunca realiza cambios,
-        independientemente del valor del parámetro dry_run.
+        Shows the differences between the remote server and the local environment.
+        This method is always read-only and never makes changes,
+        regardless of the value of the dry_run parameter.
         
         Args:
-            dry_run: Este parámetro se mantiene por compatibilidad pero siempre se ignora
-            show_all: Si es True, muestra todos los archivos sin límite
-            verbose: Si es True, muestra información detallada
-            only_patches: Si es True, muestra solo información relacionada con parches
+            dry_run: This parameter is kept for compatibility but is always ignored
+            show_all: If True, shows all files without limit
+            verbose: If True, shows detailed information
+            only_patches: If True, shows only information related to patches
             
         Returns:
-            bool: True si la operación fue exitosa, False en caso contrario
+            bool: True if the operation was successful, False otherwise
         """
         if not only_patches:
-            print(f"🔍 Comparando archivos entre el servidor remoto y el entorno local...")
+            print(f"🔍 Comparing files between remote server and local environment...")
         
-        # Verificar conexión
+        # Verify connection
         if not self.check_remote_connection():
             return False
             
-        # Preparar rutas (siempre desde remoto para diff)
+        # Prepare paths (always from remote for diff)
         source, dest = self._prepare_paths("from-remote")
         
-        # Obtener las exclusiones y verificar que sean un diccionario válido
+        # Get exclusions and verify they are a valid dictionary
         exclusions = self.exclusions.copy() if self.exclusions else {}
         if not exclusions:
             if not only_patches:
-                print("ℹ️ No hay exclusiones configuradas.")
+                print("ℹ️ No exclusions configured.")
         
-        # Añadir archivos protegidos a las exclusiones para que no aparezcan en el diff
+        # Add protected files to exclusions so they don't appear in the diff
         if self.protected_files:
             if not only_patches:
-                print(f"🛡️ Protegiendo {len(self.protected_files)} archivos durante la comparación")
+                print(f"🛡️ Protecting {len(self.protected_files)} files during comparison")
             for i, file_pattern in enumerate(self.protected_files):
                 exclusions[f"protected_{i}"] = file_pattern
         
-        # Mostrar número de exclusiones
+        # Show number of exclusions
         if not only_patches:
-            print(f"ℹ️ Se aplicarán {len(exclusions)} patrones de exclusión")
+            print(f"ℹ️ {len(exclusions)} exclusion patterns will be applied")
             
-            # En modo verbose, mostrar los patrones de exclusión
+            # In verbose mode, show exclusion patterns
             if verbose:
-                print("📋 Aplicando patrones de exclusión:")
+                print("📋 Applying exclusion patterns:")
                 for key, pattern in sorted(exclusions.items()):
                     print(f"   - {key}: {pattern}")
         
-        # Opciones de rsync para mostrar diferencias
+        # Rsync options to show differences
         options = [
-            "-avzhnc",  # archivo, verbose, compresión, human-readable, dry-run, checksum
-            "--itemize-changes",  # mostrar cambios detallados
-            "--delete",  # eliminar archivos que no existen en origen
+            "-avzhnc",  # archive, verbose, compression, human-readable, dry-run, checksum
+            "--itemize-changes",  # show detailed changes
+            "--delete",  # delete files that don't exist in source
         ]
         
-        # Ejecutar rsync en modo de comparación
-        # Siempre usamos dry_run=True porque este método es solo para mostrar diferencias
+        # Run rsync in comparison mode
+        # Always use dry_run=True because this method is only to show differences
         success, output = run_rsync(
             source=source,
             dest=dest,
             options=options,
             exclusions=exclusions,
-            dry_run=True,  # Siempre en modo simulación para diff
-            capture_output=True,  # Capturar la salida para procesarla nosotros
-            verbose=verbose  # Solo mostrar la salida cruda en modo verbose
+            dry_run=True,  # Always in simulation mode for diff
+            capture_output=True,  # Capture output to process it ourselves
+            verbose=verbose  # Only show raw output in verbose mode
         )
         
         if not success:
-            print("❌ Error al mostrar diferencias")
+            print("❌ Error showing differences")
             return False
             
-        # Si solo queremos información de parches, no necesitamos continuar con el análisis normal
+        # If we only want patch information, we don't need to continue with normal analysis
         if only_patches:
             return self._analyze_patches(output, show_all, verbose)
         
-        # Parsear la salida de rsync
-        files_new = []       # Archivos nuevos en el servidor (>f....)
-        files_modified = []  # Archivos modificados (.s....)
-        files_deleted = []   # Archivos que serían eliminados (*deleting)
-        files_directories = [] # Directorios (.d....)
+        # Parse rsync output
+        files_new = []       # New files in the server (>f....)
+        files_modified = []  # Modified files (.s....)
+        files_deleted = []   # Files that would be deleted (*deleting)
+        files_directories = [] # Directories (.d....)
         
-        # Límite de archivos a mostrar por categoría
+        # File limit to show per category
         limit = 0 if show_all else 100
         
-        # Analizar cada línea de la salida
+        # Analyze each line of output
         for line in output.split('\n'):
             line = line.strip()
             
-            # Ignorar líneas vacías o sin información de archivo
+            # Ignore empty lines or without file information
             if not line or line.startswith('sent ') or line.startswith('receiving ') or line.startswith('total size'):
                 continue
                 
-            # Extraer el patrón de cambio y el nombre del archivo
+            # Extract change pattern and file name
             if line.startswith('>'):
-                # Archivo nuevo en el servidor
+                # New file in server
                 pattern = line[:10]
                 file = line[10:].strip()
                 files_new.append((pattern, file))
             elif line.startswith('*deleting'):
-                # Archivo presente localmente pero no en el servidor
+                # File present locally but not in server
                 file = line[10:].strip()
                 files_deleted.append(('*deleting', file))
             elif line.startswith('.d'):
-                # Directorio
+                # Directory
                 pattern = line[:10]
                 file = line[10:].strip()
                 files_directories.append((pattern, file))
             elif '.s' in line[:5]:
-                # Archivo modificado
+                # Modified file
                 pattern = line[:10]
                 file = line[10:].strip()
                 files_modified.append((pattern, file))
         
-        # Crear función para imprimir archivos con límite
+        # Create function to print files with limit
         def print_files(files, title, symbol, limit_count=limit):
             if not files:
                 return
                 
             count = len(files)
-            print(f"\n{symbol} {title} ({count} elementos):")
+            print(f"\n{symbol} {title} ({count} items):")
             
-            # Verificar si se debe limitar la salida
-            if limit_count > 0 and count > limit_count:
-                print_list = files[:limit_count]
-                remainder = count - limit_count
-            else:
-                print_list = files
-                remainder = 0
+            # Sort files by name
+            files_sorted = sorted(files, key=lambda x: x[1].lower())
+            
+            # Show files up to limit or all if no limit
+            for i, (pattern, file) in enumerate(files_sorted):
+                if limit_count > 0 and i >= limit_count:
+                    print(f"... and {count - limit_count} more files")
+                    break
                 
-            # Imprimir archivos
-            for pattern, file in print_list:
-                if verbose:
-                    print(f"   {pattern} {file}")
-                else:
-                    print(f"   {file}")
+                # Process rsync pattern to determine file type
+                file_type = "?"
+                if pattern[1] == 'f':
+                    file_type = "📄"  # Regular file
+                elif pattern[1] == 'd':
+                    file_type = "📁"  # Directory
+                elif pattern[1] == 'L':
+                    file_type = "🔗"  # Symlink
                     
-            # Si hay más archivos que no se mostraron
-            if remainder > 0:
-                print(f"   ... y {remainder} más (usa --all para ver todos)")
+                print(f"  {file_type} {file}")
         
-        # Mostrar el resumen
-        print("\n====== RESUMEN DE DIFERENCIAS ======")
-        print(f"Total de archivos a comparar: {len(files_new) + len(files_modified) + len(files_deleted) + len(files_directories)}")
+        # Print different categories of changes
+        print_files(files_new, "New files in server (would be downloaded)", "📥")
+        print_files(files_modified, "Modified files (would be updated)", "🔄")
+        print_files(files_deleted, "Files to delete (exists locally but not in server)", "🗑️")
         
-        # Mostrar archivos por categoría si hay alguno
-        print_files(files_new, "Archivos nuevos en el servidor", "🆕")
-        print_files(files_modified, "Archivos modificados en el servidor", "📝")
-        print_files(files_deleted, "Archivos nuevos locales (no están en el servidor)", "🏠")
-        
-        # Directorios sólo si hay verbose
-        if verbose:
-            print_files(files_directories, "Directorios", "📁")
-        
-        # Analizar y mostrar información de parches
-        self._analyze_patches(output, show_all, verbose, files_modified, files_deleted)
-        
-        return True
+        # Analyze if there are patches affected by the synchronization
+        return self._analyze_patches(output, show_all, verbose, files_modified, files_deleted)
         
     def _analyze_patches(self, output: str = "", show_all: bool = False, verbose: bool = False, files_modified: list = None, files_deleted: list = None) -> bool:
         """
-        Analiza la información de parches y muestra un resumen.
+        Analyzes if the synchronization would affect registered patches
         
         Args:
-            output: Salida de rsync para analizar (si no se proporciona files_modified y files_deleted)
-            show_all: Si es True, muestra todos los archivos sin límite
-            verbose: Si es True, muestra información detallada
-            files_modified: Lista de archivos modificados ya procesada (opcional)
-            files_deleted: Lista de archivos eliminados ya procesada (opcional)
+            output: Rsync command output
+            show_all: If True, shows all affected files
+            verbose: If True, shows additional information
+            files_modified: List of modified files
+            files_deleted: List of files that would be deleted
             
         Returns:
-            bool: True si la operación fue exitosa, False en caso contrario
+            bool: True if operation can continue safely, False otherwise
         """
-        # Si no se proporcionaron listas de archivos, procesamos la salida de rsync
-        if files_modified is None or files_deleted is None:
-            files_modified = []
-            files_deleted = []
-            
-            # Analizar cada línea de la salida para extraer archivos
-            for line in output.split('\n'):
-                line = line.strip()
-                
-                # Ignorar líneas vacías o sin información de archivo
-                if not line or line.startswith('sent ') or line.startswith('receiving ') or line.startswith('total size'):
-                    continue
-                    
-                # Extraer el patrón de cambio y el nombre del archivo
-                if line.startswith('*deleting'):
-                    # Archivo presente localmente pero no en el servidor
-                    file = line[10:].strip()
-                    files_deleted.append(('*deleting', file))
-                elif '.s' in line[:5]:
-                    # Archivo modificado
-                    pattern = line[:10]
-                    file = line[10:].strip()
-                    files_modified.append((pattern, file))
-        
-        # Obtener la lista de archivos parcheados
+        # Try to load patched files from patch manager
         try:
-            from commands.patch import get_patched_files, PatchManager
+            from commands.patch import PatchManager
             
-            # Primero mostramos un mensaje para confirmar que esta parte se ejecuta
-            print("\n🔧 ANÁLISIS DE PARCHES")
-            
-            # Crear instancia del PatchManager para obtener más detalles
+            # Create patch manager instance to load patches
             patch_manager = PatchManager()
             
-            # Extraer archivos nuevos locales (presentes en "files_deleted")
-            local_files = [file for _, file in files_deleted]
+            # Check if there are patches
+            if not patch_manager.lock_data.get("patches", {}):
+                return True  # No patches to analyze
             
-            # En lugar de usar get_patched_files(), que solo muestra los parches aplicados,
-            # obtendremos todos los parches registrados directamente desde lock_data
-            patched_files = list(patch_manager.lock_data.get("patches", {}).keys())
+            # First collect all patched files
+            patched_files = []
+            patched_applied = []
             
-            # Mostrar todos los parches registrados (incluso si no están afectados por cambios)
-            if patched_files:
-                print(f"   Se encontraron {len(patched_files)} archivos con parches registrados")
+            for file_path, info in patch_manager.lock_data.get("patches", {}).items():
+                patched_files.append(file_path)
+                if info.get("applied_date"):
+                    patched_applied.append(file_path)
+            
+            # Check if we got a complete file list
+            if files_modified is None or files_deleted is None:
+                # We need to analyze the rsync output to find affected files
+                files_modified = []
+                files_deleted = []
                 
-                # 1. Archivos con parches registrados
-                print("\n📋 Archivos con parches registrados:")
-                for patched_file in patched_files:
-                    patch_info = patch_manager.lock_data["patches"].get(patched_file, {})
-                    applied_date = patch_info.get("applied_date", "")
-                    status = "✅ Aplicado" if applied_date else "❌ No aplicado"
-                    print(f"   - {patched_file} [{status}]")
+                # Parse rsync output to get modified and deleted files
+                for line in output.split('\n'):
+                    line = line.strip()
                     
-                    # Si el parche está aplicado, verificar el estado actual del archivo remoto
-                    if applied_date:
-                        with SSHClient(self.remote_host) as ssh:
-                            if ssh.client:
-                                remote_file = f"{self.remote_path}/{patched_file}"
-                                
-                                # Verificar si el archivo existe en el servidor
-                                cmd_check = f"test -f \"{remote_file}\" && echo \"EXISTS\" || echo \"NOT_EXISTS\""
-                                _, stdout, _ = ssh.execute(cmd_check)
-                                
-                                if "EXISTS" in stdout:
-                                    # Obtener checksums
-                                    current_remote_checksum = patch_manager.get_remote_file_checksum(ssh, remote_file)
-                                    patched_checksum = patch_info.get("patched_checksum", "")
-                                    
-                                    if patched_checksum and current_remote_checksum:
-                                        if current_remote_checksum == patched_checksum:
-                                            print(f"      • Checksum remoto: ✅ Coincide con el parche")
-                                        else:
-                                            print(f"      • Checksum remoto: ⚠️ No coincide con el parche (modificado)")
-                                            print(f"        El archivo remoto ha cambiado desde que se aplicó el parche")
-                                    elif verbose:
-                                        print(f"      • Checksum remoto: ⚠️ No se pudo verificar")
-                                else:
-                                    print(f"      • Archivo remoto: ⚠️ No existe en el servidor")
-                                    
-                    # Mostrar más detalles en modo verbose
-                    if verbose:
-                        print(f"      • Descripción: {patch_info.get('description', 'No hay descripción')}")
-                        if applied_date:
-                            print(f"      • Fecha de aplicación: {applied_date}")
+                    # Skip lines without file info
+                    if not line or line.startswith('sent ') or line.startswith('receiving ') or line.startswith('total size'):
+                        continue
                     
-                # 2. Archivos nuevos locales con parches asociados
-                local_patched = [file for file in local_files if file in patched_files]
-                
-                if local_patched:
-                    print("\n📦 Archivos nuevos locales con parches asociados:")
-                    for file in local_patched:
-                        patch_info = patch_manager.lock_data["patches"].get(file, {})
-                        applied_date = patch_info.get("applied_date", "")
-                        status = "✅ Aplicado" if applied_date else "❌ No aplicado"
-                        print(f"   - {file} [{status}]")
-                        
-                        if verbose:
-                            print(f"      • Descripción: {patch_info.get('description', 'No hay descripción')}")
-                else:
-                    print("\n📦 No hay archivos nuevos locales con parches asociados")
+                    # Find modified files
+                    if '.s' in line[:5]:
+                        pattern = line[:10]
+                        file = line[10:].strip()
+                        files_modified.append((pattern, file))
                     
-                # 3. Archivos modificados en el servidor con parches asociados
-                modified_patched = [file for _, file in files_modified if file in patched_files]
-                
-                if modified_patched:
-                    print("\n⚠️ Archivos parcheados con cambios en el servidor:")
-                    for file in modified_patched:
-                        patch_info = patch_manager.lock_data["patches"].get(file, {})
-                        applied_date = patch_info.get("applied_date", "")
-                        status = "✅ Aplicado" if applied_date else "❌ No aplicado"
-                        print(f"   - {file} [{status}]")
-                        print("      • Este archivo tiene cambios en el servidor que podrían sobrescribir el parche")
-                        if applied_date:
-                            print("      • Considera verificar los cambios antes de sincronizar")
-                else:
-                    print("\n✅ No hay archivos parcheados que hayan sido modificados en el servidor")
+                    # Find deleted files
+                    elif line.startswith('*deleting'):
+                        file = line[10:].strip()
+                        files_deleted.append(('*deleting', file))
+            
+            # Format files modified and deleted as plain list if needed
+            if files_modified and isinstance(files_modified[0], tuple):
+                files_modified_list = [file for _, file in files_modified]
             else:
-                print("   ✅ No se encontraron archivos parcheados registrados")
+                files_modified_list = files_modified
                 
-            # Mostrar sugerencias para la gestión de parches
-            print("\n💡 SUGERENCIAS:")
-            print("   • Usa 'python deploy-tools/python/cli.py patch --list' para ver todos los parches")
-            print("   • Para aplicar todos los parches, ejecuta 'python deploy-tools/python/cli.py patch'")
-            print("   • Para aplicar un parche específico: 'python deploy-tools/python/cli.py patch [ruta-archivo]'") 
+            if files_deleted and isinstance(files_deleted[0], tuple):
+                files_deleted_list = [file for _, file in files_deleted]
+            else:
+                files_deleted_list = files_deleted
+            
+            # Find patched files affected by sync
+            affected_modified = []
+            affected_deleted = []
+            
+            for patch_file in patched_files:
+                # Check if in modified files
+                for mod_file in files_modified_list:
+                    if patch_file == mod_file:
+                        affected_modified.append(patch_file)
+                
+                # Check if in deleted files
+                for del_file in files_deleted_list:
+                    if patch_file == del_file:
+                        affected_deleted.append(patch_file)
+            
+            # If we found no affected files
+            if not affected_modified and not affected_deleted:
+                # Only show message in verbose mode
+                if verbose:
+                    print("\n✅ No patched files would be affected by synchronization")
+                return True
+            
+            # Show alert about affected patches
+            print("\n⚠️ WARNING: This synchronization would affect patches:")
+            
+            # Show affected files
+            if affected_modified:
+                print(f"\n🔄 Modified patched files ({len(affected_modified)}):")
+                for file in affected_modified:
+                    # Get patch info
+                    info = patch_manager.lock_data.get("patches", {}).get(file, {})
+                    description = info.get("description", "No description")
+                    status = "Applied" if file in patched_applied else "Registered"
+                    print(f"  📄 {file}")
+                    print(f"     • Description: {description}")
+                    print(f"     • Status: {status}")
+            
+            if affected_deleted:
+                print(f"\n🗑️ Deleted patched files ({len(affected_deleted)}):")
+                for file in affected_deleted:
+                    # Get patch info
+                    info = patch_manager.lock_data.get("patches", {}).get(file, {})
+                    description = info.get("description", "No description")
+                    status = "Applied" if file in patched_applied else "Registered"
+                    print(f"  📄 {file}")
+                    print(f"     • Description: {description}")
+                    print(f"     • Status: {status}")
+            
+            # Show recommendations
+            print("\n⚠️ RECOMMENDATIONS:")
+            print("   - If continuing with synchronization, patches would be overwritten")
+            print("   - Use 'patch --list' to view details of all patches")
+            print("   - After synchronization, apply patches again with 'patch-commit'")
             
             return True
-                
+            
         except Exception as e:
-            # Si hay algún error en el análisis de parches, mostrarlo
-            print(f"\n⚠️ Error al analizar parches: {str(e)}")
             if verbose:
-                import traceback
-                traceback.print_exc()
-            return False
+                print(f"\n⚠️ Error analyzing patches: {str(e)}")
+            return True
         
     def _check_protected_files(self, direction: str) -> bool:
         """
-        Verifica si hay archivos protegidos e informa que serán excluidos
+        Verifies if protected files would be affected by synchronization
         
         Args:
-            direction: Dirección de la sincronización ("from-remote" o "to-remote")
+            direction: Direction of synchronization ("from-remote" or "to-remote")
             
         Returns:
-            bool: Siempre retorna True (los archivos protegidos serán excluidos)
+            bool: True if it's safe to continue, False otherwise
         """
+        # Get protected files list
         if not self.protected_files:
             return True
             
-        protected_at_risk = []
+        print(f"🛡️ Checking {len(self.protected_files)} protected files...")
         
-        if direction == "from-remote":
-            # Identificar archivos locales protegidos
-            for file_pattern in self.protected_files:
-                full_path = self.local_path / file_pattern
+        # Prepare command to check file existence
+        with SSHClient(self.remote_host) as ssh:
+            if not ssh.client:
+                print("❌ Error establishing SSH connection")
+                return False
                 
-                # Si es un patrón con comodín, usar glob
-                if "*" in file_pattern:
-                    matches = list(self.local_path.glob(file_pattern))
-                    for match in matches:
-                        if match.is_file():
-                            rel_path = match.relative_to(self.local_path)
-                            protected_at_risk.append(str(rel_path))
-                elif Path(full_path).is_file():
-                    protected_at_risk.append(file_pattern)
-                    
-        else:  # to-remote
-            # Para subir archivos, identificar todos los archivos protegidos
-            protected_at_risk = self.protected_files
+            # Build command to check all files
+            check_script = []
+            for pattern in self.protected_files:
+                if pattern.startswith('/'):
+                    # Absolute path, check directly
+                    check_script.append(f"if [ -e \"{pattern}\" ]; then echo \"EXISTS {pattern}\"; fi")
+                else:
+                    # Relative path, build full path
+                    check_script.append(f"if [ -e \"{self.remote_path}{pattern}\" ]; then echo \"EXISTS {pattern}\"; fi")
             
-        if protected_at_risk:
-            print("\nℹ️ Los siguientes archivos protegidos serán excluidos de la sincronización:")
-            for file in protected_at_risk:
-                print(f"  - {file}")
+            # Execute remote check
+            cmd = "; ".join(check_script)
+            code, stdout, stderr = ssh.execute(cmd)
+            
+            if code != 0:
+                print(f"❌ Error checking protected files: {stderr}")
+                return False
+            
+            # Process results
+            existing_files = []
+            for line in stdout.split('\n'):
+                if line.startswith('EXISTS '):
+                    file_path = line[7:]
+                    existing_files.append(file_path)
+            
+            # Show results
+            if existing_files:
+                if direction == "from-remote":
+                    print(f"🛡️ Found {len(existing_files)} protected files on the server that will be ignored:")
+                else:  # to-remote
+                    print(f"🛡️ Found {len(existing_files)} protected files on the server that will not be overwritten:")
                 
-        # Siempre retornamos True porque los archivos protegidos serán excluidos
-        return True
+                for file in existing_files:
+                    print(f"   - {file}")
+            else:
+                print("✅ No protected files found in the destination")
+            
+            return True
         
     def _clean_excluded_files(self, direction: str) -> bool:
         """
-        Limpia archivos excluidos en el destino después de la sincronización
-        
-        Los archivos que están tanto en exclusiones como en protected_files
-        no serán eliminados durante la limpieza.
+        Cleans (deletes) excluded files that may have been downloaded in previous synchronizations
         
         Args:
-            direction: Dirección de la sincronización ("from-remote" o "to-remote")
+            direction: Direction of synchronization ("from-remote" or "to-remote")
             
         Returns:
-            bool: True si la limpieza fue exitosa, False en caso contrario
+            bool: True if the operation was successful, False otherwise
         """
-        # Esta función solo tiene sentido cuando se sincroniza desde remoto a local
-        if direction != "from-remote":
+        # This only makes sense for from-remote direction and with exclusions
+        if direction != "from-remote" or not self.exclusions:
             return True
             
-        print("\n🧹 Limpiando archivos excluidos en el entorno local...")
+        print(f"🧹 Cleaning excluded files in local environment...")
         
-        # Obtener exclusiones
-        exclusions = self.exclusions
-        if not exclusions:
-            print("ℹ️ No hay exclusiones configuradas. Saltando limpieza.")
+        excluded_files = []
+        excluded_dirs = []
+        
+        # Process exclusions
+        for pattern in self.exclusions.values():
+            # Skip if it's a pattern that doesn't refer to a specific file
+            if '*' in pattern or '?' in pattern:
+                continue
+                
+            # Check if it's a directory or file
+            local_path = self.local_path / pattern
+            if os.path.isdir(local_path):
+                excluded_dirs.append(pattern)
+            elif os.path.isfile(local_path):
+                excluded_files.append(pattern)
+        
+        # If we found no files to clean
+        if not excluded_files and not excluded_dirs:
+            print("✅ No excluded files need to be cleaned")
             return True
-            
-        # Contar archivos eliminados
-        cleaned_count = 0
         
-        # Procesar cada patrón de exclusión
-        for category, pattern in exclusions.items():
-            # Verificar si el patrón está en protected_files - si es así, saltarlo
-            if self.protected_files and pattern in self.protected_files:
-                print(f"🛡️ No se eliminará la exclusión protegida: {pattern}")
-                continue
-                
-            # También verificar si el patrón coincide con algún patrón de protected_files
-            is_protected = False
-            if self.protected_files:
-                for protected_pattern in self.protected_files:
-                    # Considerar patrones con y sin barra al final
-                    pattern_base = pattern.rstrip('/')
-                    protected_base = protected_pattern.rstrip('/')
-                    
-                    # Verificar coincidencia exacta o si el patrón es subdirectorio de uno protegido
-                    if pattern_base == protected_base or pattern_base.startswith(f"{protected_base}/"):
-                        print(f"🛡️ No se eliminará la exclusión protegida: {pattern}")
-                        is_protected = True
-                        break
-                        
-            if is_protected:
-                continue
-                
-            # Convertir a Path y comprobar si existe
-            if pattern.endswith('/'):
-                # Es un directorio
-                dir_path = self.local_path / pattern.rstrip('/')
-                if dir_path.exists() and dir_path.is_dir():
-                    try:
-                        # Eliminar el directorio completo
-                        shutil.rmtree(dir_path)
-                        print(f"✅ Directorio eliminado: {pattern}")
-                        cleaned_count += 1
-                    except Exception as e:
-                        print(f"❌ Error al eliminar directorio {pattern}: {str(e)}")
-            else:
-                # Es un archivo o patrón
-                if "*" in pattern:
-                    # Patrón con comodín
-                    matches = list(self.local_path.glob(pattern))
-                    for match in matches:
-                        # Verificar si el archivo está protegido
-                        rel_path_str = str(match.relative_to(self.local_path))
-                        is_file_protected = False
-                        
-                        if self.protected_files:
-                            for protected_pattern in self.protected_files:
-                                protected_base = protected_pattern.rstrip('/')
-                                if rel_path_str == protected_base or rel_path_str.startswith(f"{protected_base}/"):
-                                    is_file_protected = True
-                                    break
-                                    
-                        if is_file_protected:
-                            print(f"🛡️ No se eliminará el archivo protegido: {rel_path_str}")
-                            continue
-                            
-                        try:
-                            if match.is_file():
-                                match.unlink()
-                                print(f"✅ Archivo eliminado: {match.relative_to(self.local_path)}")
-                                cleaned_count += 1
-                            elif match.is_dir():
-                                shutil.rmtree(match)
-                                print(f"✅ Directorio eliminado: {match.relative_to(self.local_path)}")
-                                cleaned_count += 1
-                        except Exception as e:
-                            print(f"❌ Error al eliminar {match}: {str(e)}")
-                else:
-                    # Archivo específico
-                    file_path = self.local_path / pattern
-                    if file_path.exists():
-                        try:
-                            if file_path.is_file():
-                                file_path.unlink()
-                                print(f"✅ Archivo eliminado: {pattern}")
-                                cleaned_count += 1
-                            elif file_path.is_dir():
-                                shutil.rmtree(file_path)
-                                print(f"✅ Directorio eliminado: {pattern}")
-                                cleaned_count += 1
-                        except Exception as e:
-                            print(f"❌ Error al eliminar {pattern}: {str(e)}")
-                            
-        print(f"✅ Limpieza completa. {cleaned_count} elementos eliminados.")
+        # Show what we will clean
+        if excluded_files:
+            print(f"🗑️ Found {len(excluded_files)} excluded files to remove:")
+            for file in excluded_files:
+                print(f"   - {file}")
+                # Delete the file
+                try:
+                    local_path = self.local_path / file
+                    if os.path.isfile(local_path):
+                        os.unlink(local_path)
+                except Exception as e:
+                    print(f"   ⚠️ Error deleting file {file}: {str(e)}")
+        
+        if excluded_dirs:
+            print(f"🗑️ Found {len(excluded_dirs)} excluded directories to remove:")
+            for directory in excluded_dirs:
+                print(f"   - {directory}")
+                # Delete the directory recursively
+                try:
+                    local_path = self.local_path / directory
+                    if os.path.isdir(local_path):
+                        shutil.rmtree(local_path)
+                except Exception as e:
+                    print(f"   ⚠️ Error deleting directory {directory}: {str(e)}")
+        
+        print("✅ Finished cleaning excluded files")
         return True
         
     def sync(self, direction: str = "from-remote", dry_run: bool = False, clean: bool = True) -> bool:
         """
-        Sincroniza archivos entre el servidor remoto y el entorno local
-        
-        Los archivos listados en protected_files se excluyen automáticamente de la sincronización.
-        Implementa el patrón "fail fast": falla inmediatamente ante errores críticos y no intenta adivinar valores.
+        Synchronizes files between environments
         
         Args:
-            direction: Dirección de la sincronización ("from-remote" o "to-remote")
-            dry_run: Si es True, no realiza cambios reales
-            clean: Si es True, limpia archivos excluidos después de la sincronización
+            direction: Direction of synchronization ("from-remote" or "to-remote")
+            dry_run: If True, only simulates synchronization without making changes
+            clean: If True, cleans excluded files after synchronization
             
         Returns:
-            bool: True si la sincronización fue exitosa, False en caso contrario
-        
-        Raises:
-            RuntimeError: Si se encuentra un error crítico que impide la sincronización
+            bool: True if the synchronization was successful, False otherwise
         """
-        # Verificar que tenemos configuración adecuada antes de comenzar
-        if not self.remote_host or not self.remote_path or not self.local_path:
-            error_msg = "❌ Error: Configuración SSH incompleta. Verifique las siguientes claves en sites.yaml:\n"
-            if not self.remote_host:
-                error_msg += "   - ssh.remote_host: Servidor remoto\n"
-            if not self.remote_path:
-                error_msg += "   - ssh.remote_path: Ruta en el servidor remoto\n"
-            if not self.local_path:
-                error_msg += "   - ssh.local_path: Ruta local\n"
-            print(error_msg)
-            return False
-            
         if direction == "from-remote":
-            print(f"📥 Sincronizando archivos desde el servidor remoto al entorno local...")
-            
-            if self.config.get("security", "backups") == "enabled":
-                # Crear un backup completo antes de sincronizar desde remoto
-                if not dry_run:
-                    print("📦 Creando backup completo del entorno local antes de sincronizar...")
-                    try:
-                        backup_path = create_full_backup()
-                        print(f"✅ Backup completo creado en: {backup_path}")
-                    except Exception as e:
-                        print(f"⚠️ Error al crear backup completo: {str(e)}")
-                        # Preguntar si continuar a pesar del error de backup
-                        confirm = input("   ¿Desea continuar con la sincronización sin backup? (escriba 'si' para confirmar): ")
-                        if confirm.lower() != "si":
-                            print("❌ Operación cancelada.")
-                            return False
-            else:
-                print("⚠️ ADVERTENCIA: Protección de backups está desactivada.")
-                print("   No se creará un backup completo del entorno local antes de sincronizar.")
+            print(f"🔄 Synchronizing files from remote server to local environment...")
+            print(f"   Source: {self.remote_host}:{self.remote_path}")
+            print(f"   Destination: {self.local_path}")
         else:
-            print(f"📤 Sincronizando archivos desde el entorno local al servidor remoto...")
-            print("⚠️ ADVERTENCIA: Backups remotos no se realizaran en este entorno.")
-            print("   Para ambientes productivos se recomienda contar con un sistema de snapshots remotos para restaurar el entorno en caso de fallo.")
-            
-            # Verificar si hay protección de producción activada
-            if self.config.get("security", "production_safety") == "enabled":
-                print("⚠️ ADVERTENCIA: Protección de producción está activada.")
-                print("   Esta operación modificaría archivos en PRODUCCIÓN.")
-                
-                # Solicitar confirmación explícita
-                confirm = input("   ¿Estás COMPLETAMENTE SEGURO de continuar? (escriba 'si' para confirmar): ")
-                
-                if confirm.lower() != "si":
-                    print("❌ Operación cancelada por seguridad.")
-                    return False
-                    
-                print("⚡ Confirmación recibida. Procediendo con la operación...")
-                print("")
+            print(f"🔄 Synchronizing files from local environment to remote server...")
+            print(f"   Source: {self.local_path}")
+            print(f"   Destination: {self.remote_host}:{self.remote_path}")
         
-        # Verificar que los archivos protegidos están definidos
-        if not self.protected_files:
-            print("❌ Error: No hay archivos protegidos definidos en la configuración")
-            print("   Es peligroso sincronizar sin proteger archivos críticos como wp-config.php")
-            print("   Asegúrese de que la sección 'protected_files' esté definida en config.yaml")
-            return False
-        
-        # Identificar e informar sobre archivos protegidos que serán excluidos
-        if not dry_run:
-            self._check_protected_files(direction)
-        
-        # Verificar conexión
+        # Verify connection
         if not self.check_remote_connection():
             return False
-            
-        # Preparar rutas
+        
+        # Prepare source and destination paths
         source, dest = self._prepare_paths(direction)
         
-        # Opciones de rsync
-        options = [
-            "-avzh",  # archivo, verbose, compresión, human-readable
-            "--progress",  # mostrar progreso
-            "--delete",  # eliminar archivos que no existen en origen
-        ]
-        
-        # Si es simulación, agregar opción
-        if dry_run:
-            print("🔄 Ejecutando en modo simulación (no se realizarán cambios)")
-            
-        # Preparar exclusiones con archivos protegidos
+        # Get exclusions and verify they are a valid dictionary
         exclusions = self.exclusions.copy() if self.exclusions else {}
+        if not exclusions:
+            print("ℹ️ No exclusions configured. All files in the source will be synchronized.")
         
-        # Añadir archivos protegidos a las exclusiones
-        if self.protected_files:
-            print(f"🛡️ Protegiendo {len(self.protected_files)} archivos durante la sincronización")
-            for i, file_pattern in enumerate(self.protected_files):
-                exclusions[f"protected_{i}"] = file_pattern
-        
-        # Añadir archivos con parches registrados según la configuración
-        exclusions_mode = self.config.get("patches", "exclusions_mode", default="local-only")
-        
-        if exclusions_mode != "disabled":
-            should_exclude_patches = False
+        # Process patch exclusions
+        try:
+            # Check if we need to exclude patched files according to configuration
+            exclusions_mode = self.config.get("patches", "exclusions_mode", default="local-only")
             
-            if exclusions_mode == "both-ways":
-                # Excluir parches en ambas direcciones
-                should_exclude_patches = True
-            elif exclusions_mode == "local-only" and direction == "from-remote":
-                # Excluir parches solo cuando sincronizamos desde remoto a local
-                should_exclude_patches = True
-            elif exclusions_mode == "remote-only" and direction == "to-remote":
-                # Excluir parches solo cuando sincronizamos desde local a remoto
-                should_exclude_patches = True
-                
-            if should_exclude_patches:
+            if (direction == "from-remote" and exclusions_mode in ["local-only", "both-ways"]) or \
+               (direction == "to-remote" and exclusions_mode in ["remote-only", "both-ways"]):
+                # Load patched files
                 patched_files = self._load_patched_files()
                 
+                # Add each patched file to exclusions
+                for i, patched_file in enumerate(patched_files):
+                    if patched_file:
+                        exclusions[f"patched_file_{i}"] = patched_file
+                
                 if patched_files:
-                    print(f"🔧 Excluyendo {len(patched_files)} archivos con parches registrados y sus backups específicos")
-                    for i, file_path in enumerate(patched_files):
-                        exclusions[f"patched_{i}"] = file_path
+                    print(f"ℹ️ Excluding {len(patched_files)} patched files as configured")
+        except Exception as e:
+            print(f"⚠️ Error processing patch exclusions: {str(e)}")
+            print("   Continuing without patch exclusions")
+            
+        # Add protected files to exclusions
+        if self.protected_files:
+            print(f"🛡️ Adding {len(self.protected_files)} protected files to exclusions")
+            for i, file_pattern in enumerate(self.protected_files):
+                exclusions[f"protected_{i}"] = file_pattern
+                
+            # Verify protected files in destination if not dry-run
+            if not dry_run:
+                self._check_protected_files(direction)
         
-        # Crear copia de seguridad del destino si no es modo simulación
-        if not dry_run and direction == "from-remote":
-            # Asegurarnos de que el directorio de destino existe
-            ensure_dir_exists(self.local_path)
-            
-            # Ya no creamos el backup selectivo aquí, pues se crea un backup completo al inicio del método
-            # El backup completo incluye todos los archivos, no solo los protegidos
-            
-        # Ejecutar rsync
+        # Show number of exclusions
+        print(f"ℹ️ {len(exclusions)} exclusion patterns will be applied")
+        
+        # Options for rsync
+        options = [
+            "-avzh",  # archive, verbose, compression, human-readable
+            "--delete",  # delete files that don't exist in source
+        ]
+        
+        # Add --dry-run if we're simulating
+        if dry_run:
+            options.append("--dry-run")
+            print("🔍 Dry-run mode: No real changes will be made")
+        
+        # Execute rsync
         success, output = run_rsync(
             source=source,
             dest=dest,
             options=options,
             exclusions=exclusions,
-            dry_run=dry_run
+            dry_run=dry_run,
+            capture_output=False  # Let it print directly to the console
         )
         
         if not success:
-            print("❌ Error durante la sincronización")
+            print("❌ Error during synchronization")
             return False
-            
-        # Si la sincronización fue exitosa y no es simulación
-        if success and not dry_run:
-            # Si fue desde remoto a local, arreglar configuración
-            if direction == "from-remote":
-                self._fix_local_config()
-                
-                # Limpieza de archivos excluidos si se solicitó
-                if clean:
-                    self._clean_excluded_files(direction)
-                    
-            print("✅ Sincronización completada con éxito")
-            
-        return success
         
+        # Clean excluded files if necessary
+        if clean and not dry_run and direction == "from-remote":
+            self._clean_excluded_files(direction)
+            
+        # Fix local configuration if needed after from-remote sync
+        if not dry_run and direction == "from-remote":
+            self._fix_local_config()
+            
+        if dry_run:
+            print("🔍 Dry-run complete. No changes were made.")
+        else:
+            print("✅ Synchronization completed successfully.")
+            
+        return True
+    
     def _fix_local_config(self):
         """
-        Arregla configuración local después de sincronizar desde remoto
+        Fixes local configuration after synchronization from remote
         
-        Implementa el patrón "fail fast": falla inmediatamente si faltan recursos críticos
+        This is needed when configuration elements in remote environment
+        differ from local and need to be adjusted after syncing.
         """
-        # Ajustar wp-config.php para DDEV si es necesario
-        wp_config_path = self.local_path / "wp-config.php"
-        wp_config_ddev_path = self.local_path / "wp-config-ddev.php"
+        print("🔧 Checking if local configuration needs adjustments...")
         
-        if wp_config_path.exists() and wp_config_ddev_path.exists():
-            print("🔍 Verificando que wp-config.php incluya la configuración DDEV...")
+        # Check media URL
+        media_config = self.config.config.get("media", {})
+        if media_config:
+            # Get URLs
+            remote_url = self.config.get("urls", "remote", default="")
+            local_url = self.config.get("urls", "local", default="")
             
-            # Leer el archivo
-            try:
-                with open(wp_config_path, 'r') as f:
-                    content = f.read()
-            except Exception as e:
-                print(f"❌ Error al leer wp-config.php: {str(e)}")
-                return False
+            if remote_url and local_url and remote_url != local_url:
+                print("ℹ️ URLs are different, checking if media configuration needs update")
                 
-            # Verificar si ya incluye la configuración DDEV
-            if "wp-config-ddev.php" not in content:
-                print("⚙️ Corrigiendo wp-config.php para incluir configuración DDEV...")
-                
-                # Hacer una copia de seguridad
-                backup_result = create_backup(wp_config_path, config=self.config)
-                if not backup_result:
-                    print("⚠️ No se pudo crear copia de seguridad de wp-config.php. Continuando de todos modos...")
-                
-                # Código para incluir DDEV
-                ddev_config = (
-                    "<?php\n"
-                    "// DDEV configuration\n"
-                    "$ddev_settings = dirname(__FILE__) . '/wp-config-ddev.php';\n"
-                    "if (is_readable($ddev_settings) && !defined('DB_USER')) {\n"
-                    "  require_once($ddev_settings);\n"
-                    "}\n\n"
-                )
-                
-                # Añadir el código al principio del archivo
+                # Check if we need to configure local media
                 try:
-                    with open(wp_config_path, 'w') as f:
-                        f.write(ddev_config + content)
-                    print("✅ wp-config.php actualizado para DDEV.")
+                    from commands.media import configure_media_path
+                    
+                    # Configure media
+                    print("🔄 Configuring local media path...")
+                    configure_media_path(
+                        media_url=None,  # Force to get value from config.yaml
+                        expert_mode=media_config.get("expert_mode", False),
+                        media_path=None,  # Force to get value from config.yaml
+                        remote=False,
+                        verbose=False
+                    )
                 except Exception as e:
-                    print(f"❌ Error al actualizar wp-config.php: {str(e)}")
-                    return False
-            else:
-                print("✅ wp-config.php ya incluye la configuración DDEV.")
-                
-        return True
-        
+                    print(f"⚠️ Error configuring media: {str(e)}")
+                    print("   You may need to run 'media-path' manually")
+        else:
+            print("ℹ️ No media configuration found, skipping")
+            
+        # Clean cache
+        try:
+            from utils.wp_cli import flush_cache
+            
+            print("🧹 Cleaning local cache...")
+            flush_cache(
+                path=self.local_path,
+                remote=False,
+                use_ddev=True
+            )
+        except Exception as e:
+            print(f"⚠️ Error cleaning cache: {str(e)}")
+            print("   You may need to run 'wp cache flush' manually")
+            
+        print("✅ Local configuration adjustments completed")
+
 def sync_files(direction: str = "from-remote", dry_run: bool = False, clean: bool = True, skip_full_backup: bool = False) -> bool:
     """
-    Sincroniza archivos entre entornos
-    
-    Los archivos listados en la sección protected_files de la configuración
-    se excluyen automáticamente de la sincronización para proteger archivos
-    críticos como wp-config.php y otros. Estos archivos también están protegidos
-    de la eliminación durante la fase de limpieza posterior a la sincronización.
-    
-    Para proteger tanto archivos excluidos como plugins de desarrollo local, 
-    asegúrese de incluirlos tanto en 'exclusions' como en 'protected_files'.
-    
-    Esta función sigue el patrón "fail fast":
-    - Falla inmediatamente si falta información crítica (como los archivos protegidos)
-    - No intenta adivinar valores predeterminados
-    - Protege archivos críticos
+    Synchronizes files between environments
     
     Args:
-        direction: Dirección de la sincronización ("from-remote" o "to-remote")
-        dry_run: Si es True, no realiza cambios reales
-        clean: Si es True, limpia archivos excluidos después de la sincronización
-        skip_full_backup: Si es True, omite la creación del backup completo antes de sincronizar
+        direction: Direction of synchronization ("from-remote" or "to-remote")
+        dry_run: If True, only simulates synchronization without making changes
+        clean: If True, cleans excluded files after synchronization
+        skip_full_backup: If True, skips creating a full backup before synchronizing from remote
         
     Returns:
-        bool: True si la sincronización fue exitosa, False en caso contrario
+        bool: True if the synchronization was successful, False otherwise
     """
-    # Crear y configurar el sincronizador
+    # Create backup if going from-remote and not in dry-run mode or explicitly skipped
+    if direction == "from-remote" and not dry_run and not skip_full_backup:
+        print("📦 Creating full backup before synchronizing files...")
+        
+        # Create a full backup (calls create_backup with all=True)
+        success, backup_path = create_full_backup()
+        
+        if not success:
+            print("⚠️ Failed to create backup. Continuing with synchronization anyway.")
+            # Don't abort on backup failure, continue with sync
+        else:
+            print(f"✅ Backup created: {backup_path}")
+            
+    # Handle the old pattern where sync_files was monkey-patched by a security check
+    # that skipped the backup. We no longer need this pattern, but keep it for compatibility.
+    # Now we use the skip_full_backup parameter instead.
     try:
-        syncer = FileSynchronizer()
+        # Create synchronizer
+        synchronizer = FileSynchronizer()
         
-        # Desactivar el backup completo si se solicita
-        if skip_full_backup:
-            # Guardar referencia al método original
-            original_sync = syncer.sync
-            
-            # Crear un método que envuelve al original y desactiva temporalmente la importación
-            def sync_without_backup(*args, **kwargs):
-                # Guardamos el módulo original
-                import sys
-                original_backup = sys.modules.get('commands.backup', None)
-                
-                # Temporalmente quitamos el módulo
-                if 'commands.backup' in sys.modules:
-                    sys.modules['commands.backup'] = None
-                
-                try:
-                    # Llamar al método original
-                    return original_sync(*args, **kwargs)
-                finally:
-                    # Restaurar el módulo original
-                    if original_backup:
-                        sys.modules['commands.backup'] = original_backup
-            
-            # Reemplazar temporalmente el método
-            syncer.sync = sync_without_backup
-        
-        # Ejecutar la sincronización
-        return syncer.sync(direction=direction, dry_run=dry_run, clean=clean)
+        # Run synchronization
+        return synchronizer.sync(direction=direction, dry_run=dry_run, clean=clean)
     except Exception as e:
-        print(f"❌ Error durante la sincronización: {str(e)}")
         import traceback
+        print(f"❌ Error during synchronization: {str(e)}")
         traceback.print_exc()
-        return False 
+        return False
+        
+    # For backwards compatibility in case something tries to monkey-patch sync_files
+    def sync_without_backup(*args, **kwargs):
+        # Save original module
+        import sys
+        original_module = sys.modules[__name__]
+        
+        # Store original function
+        original_sync = original_module.sync_files
+        
+        try:
+            # Create synchronizer
+            synchronizer = FileSynchronizer()
+            
+            # Run synchronization
+            return synchronizer.sync(*args, **kwargs)
+        finally:
+            # Restore original function
+            original_module.sync_files = original_sync
+    
+    # For backwards compatibility
+    sync_files.no_backup = sync_without_backup
+    
+    return sync_without_backup(direction, dry_run, clean) 

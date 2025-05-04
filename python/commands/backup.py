@@ -1,5 +1,5 @@
 """
-Comandos para crear backups completos sin aplicar exclusiones
+Commands to create complete backups without applying exclusions
 """
 
 import os
@@ -15,87 +15,87 @@ from config_yaml import get_yaml_config
 
 def create_full_backup(site_alias: Optional[str] = None, output_dir: Optional[str] = None) -> str:
     """
-    Crea un backup completo del directorio de la aplicación en formato ZIP
-    sin aplicar ninguna exclusión.
+    Creates a complete backup of the application directory in ZIP format
+    without applying any exclusions.
     
     Args:
-        site_alias: Alias del sitio a respaldar
-        output_dir: Directorio donde guardar el backup (opcional)
+        site_alias: Alias of the site to backup
+        output_dir: Directory where to save the backup (optional)
         
     Returns:
-        str: Ruta del archivo ZIP creado
+        str: Path of the created ZIP file
     """
     config = get_yaml_config()
     
-    # Seleccionar el sitio si se proporciona un alias
+    # Select the site if an alias is provided
     if site_alias:
         config.select_site(site_alias)
-        print(f"🔍 Sitio seleccionado: {site_alias}")
+        print(f"🔍 Selected site: {site_alias}")
     
-    # Obtener la ruta local del sitio
+    # Get the local path of the site
     local_path = Path(config.get("ssh", "local_path"))
     
     if not local_path.exists():
-        raise ValueError(f"La ruta local no existe: {local_path}")
+        raise ValueError(f"The local path does not exist: {local_path}")
     
-    # Generar nombre de archivo con timestamp
+    # Generate filename with timestamp
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     site_name = site_alias or config.get_default_site() or "wordpress"
     backup_filename = f"{site_name}_backup_{timestamp}.zip"
     
-    # Determinar directorio de salida
+    # Determine output directory
     if output_dir:
         backup_dir = Path(output_dir)
     else:
         backup_dir = local_path.parent / "backups"
     
-    # Crear el directorio si no existe
+    # Create the directory if it doesn't exist
     backup_dir.mkdir(parents=True, exist_ok=True)
     
-    # Ruta completa del archivo ZIP
+    # Full path of the ZIP file
     backup_path = backup_dir / backup_filename
     
-    print(f"📦 Creando backup completo sin exclusiones...")
-    print(f"   Origen: {local_path}")
-    print(f"   Destino: {backup_path}")
+    print(f"📦 Creating complete backup without exclusions...")
+    print(f"   Source: {local_path}")
+    print(f"   Destination: {backup_path}")
     
-    # Primero contar archivos totales para la barra de progreso
+    # First count total files for the progress bar
     total_files = 0
     for _, _, files in os.walk(local_path):
         total_files += len(files)
     
-    print(f"🔄 Procesando {total_files} archivos...")
+    print(f"🔄 Processing {total_files} files...")
     
-    # Crear el archivo ZIP
+    # Create the ZIP file
     with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        # Obtener la ruta base para almacenar rutas relativas en el ZIP
+        # Get the base path to store relative paths in the ZIP
         base_path = local_path
         
-        # Contador de archivos
+        # File counter
         file_count = 0
         
-        progress_bar = tqdm(total=total_files, unit='files', desc="Comprimiendo")
+        progress_bar = tqdm(total=total_files, unit='files', desc="Compressing")
         
-        # Recorrer todos los archivos y directorios
+        # Loop through all files and directories
         for root, _, files in os.walk(local_path):
-            # Añadir archivos al ZIP
+            # Add files to the ZIP
             for file in files:
                 file_path = Path(root) / file
-                # Ruta relativa para el archivo en el ZIP
+                # Relative path for the file in the ZIP
                 rel_path = file_path.relative_to(base_path)
                 
-                # Añadir archivo al ZIP
+                # Add file to the ZIP
                 zipf.write(file_path, rel_path)
                 file_count += 1
                 
-                # Actualizar barra de progreso
+                # Update progress bar
                 progress_bar.update(1)
         
-        # Cerrar la barra de progreso
+        # Close the progress bar
         progress_bar.close()
     
-    print(f"✅ Backup completado: {file_count} archivos")
-    print(f"📦 Archivo ZIP creado: {backup_path}")
+    print(f"✅ Backup completed: {file_count} files")
+    print(f"📦 ZIP file created: {backup_path}")
     
-    # Devolver la ruta del backup
+    # Return the backup path
     return str(backup_path) 
