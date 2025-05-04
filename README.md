@@ -4,7 +4,7 @@
   <img src="logo.png" alt="wp_chariot logo" width="500"/>
 </p>
 
-Tools for synchronization, deployment, and patch management in WordPress sites, implemented in Python for an efficient development workflow.
+Spin up idempotent Wordpress dev envs with one click. Sync your changes both ways conveniently. Only SSH required on your server, and only DDEV and Python required on your local machine.
 
 ## The Problem wp_chariot Solves: Your Time Is Valuable
 
@@ -15,16 +15,239 @@ In the WordPress development world, especially if you're a freelancer or small a
 Do any of these situations sound familiar?
 
 - **You spend a fortune on managed hosting** (Kinsta, WP Engine, Cloudways) but realize you're not getting the expected performance or security guarantees.
-- **You want to migrate to more economical solutions** like a VPS with RunCloud, but you're concerned about the configuration and maintenance time.
-- **You need to make quick changes to a client site**, but setting up the entire local environment would take hours.
-- **You have custom components** (plugins, themes, mu-plugins) that make synchronization between local and production a headache.
-- **You end up working directly in production** because "it's just a small change"... until something goes wrong.
+- **You want to migrate to more economical solutions** like a VPS with RunCloud, but you're concerned about the potential time that scaling and keeping it updated/patched would take.
+- **You need to make quick changes to a client site**, but setting up the entire local environment would take hours. These sites can't have that much downtime either.
+- **You have custom components** (plugins, themes, mu-plugins) that make synchronization between local and production a headache, so you perhaps handle those via CI/CD or at least you plan on doing so.
+- **You end up working directly in production** because "it's just a small change"... until something goes wrong. Fortunately you had a backup... it's a bad solution, but a solution nontheless.
 
-The reality: **68% of WordPress developers admit to working directly in production at least once a week**, simply because setting up a local environment for each project takes too much time.
+The reality: **68% of WordPress developers admit to working directly in production at least once a week**, simply because setting up a local environment for each project takes too much time. AI made that up but it's funny and it really makes my point. If you come to think about it, it sounds concerning, and it should be!
+
+
+## Modern WP Workflow with wp_chariot: Maximum Productivity
+
+1. **Initial setup (one-time)**
+
+```bash
+# Clone the tool OUTSIDE your WordPress installation
+git clone https://github.com/aficiomaquinas/wp_chariot.git wp_chariot
+
+# Set up your first site
+cd wp_chariot/python
+# Don't use the system default python, use a version manager like asdf
+pip install -r requirements.txt
+
+# Edit your individual sites (a single file with many sites)
+cp sites.example.yaml sites.yaml
+vim sites.yaml
+
+# Edit your global options (one config for defaults for all sites)
+cp config.example.yaml config.yaml
+vim config.yaml
+```
+
+2. **Daily development (minutes, not hours)**
+
+```bash
+# Initialize the complete local dev environment with a single command
+python cli.py init --with-db --with-media --site mysitedotcom
+
+# Which is the same as executing the following:
+#   Download the files from production with certain exception rules using rsync over SSH
+    python cli.py sync-files --site mysitedotcom
+#   Dump the database in production, download to local, import and replace the urls.
+    python cli.py sync-db --site mysitedotcom
+#   Use WP-Original-Media-Path plugin to use the uploads folder from production and save the trouble of serving media from local.
+    python cli.py media-path --site mysitedotcom
+
+# Ready to develop! No gigabytes of media, with all plugins
+# and the same database as in production, without our excluded plugins/themes/files
+```
+
+3. **Secure patch application**
+
+```bash
+# Register a patch for a problematic plugin
+python cli.py patch --add wp-content/plugins/woocommerce/templates/checkout.php --site mysitedotcom
+
+# Edit locally, test, and when ready...
+python cli.py patch-commit --site mysitedotcom
+```
+
+### Example Configuration Files
+
+#### Global Configuration (config.yaml)
+
+```yaml
+# Global configuration for wp_chariot
+# This file contains common configuration for all sites
+
+# Global WP-CLI settings
+wp_cli:
+  memory_limit: "512M"  # Memory limit for PHP in WP-CLI
+
+# Default security parameters
+security:
+  production_safety: "enabled"  # Protection against overwriting in production
+  backups: "enabled"  # Create automatic backups before dangerous operations
+
+# Default exclusions (can be overridden per site)
+exclusions:
+  # Cache and optimization directories
+  cache: "wp-content/cache/"
+  litespeed: "wp-content/litespeed/"
+  
+  # Media (by default do not synchronize uploads)
+  default-themes: "wp-content/themes/twenty*"
+  uploads-by-year: "wp-content/uploads/[0-9][0-9][0-9][0-9]/"
+
+# Default protected files
+protected_files:
+  - "wp-config.php"
+  - "wp-config-ddev.php"
+  - ".gitignore"
+  - ".ddev/"
+
+#### Site Configuration (sites.yaml)
+
+```yaml
+# Multiple site configuration for wp_chariot
+
+# Default site (if multiple are configured)
+default: "mystore"
+
+# Individual site configuration
+sites:
+  mystore:
+    ssh:
+      remote_host: "my-server"  # SSH alias in ~/.ssh/config
+      remote_path: "/path/to/wordpress/on/server/"
+      local_path: "/local/path/to/project/app/public/"
+
+    security:
+      production_safety: "enabled"  # Protection against overwriting
+
+    urls:
+      remote: "https://my-site.com"
+      local: "https://my-site.ddev.site"
+
+    database:
+      remote:
+        name: "db_name"
+        user: "db_user"
+        password: "secure_password"
+        host: "localhost"
+
+    media:
+      url: "https://my-site.com/wp-content/uploads/"
+      expert_mode: false
+      path: "../media"
+
+    # DDEV Configuration
+    ddev:
+      base_path: "/var/www/html"
+      docroot: "app/public"
+
+    # Specific exclusions for this site
+    exclusions:
+      # Custom plugins that should not be synchronized, many times these are versioned on their own and have their own CI/CD to deploy them to production.
+      my-plugin: "wp-content/plugins/my-custom-plugin/" # maybe this plugin is synced over CI/CI and you don't want to sync that at all (neither from-remote nor to-remote).
+    protected_files:
+      - "wp-content/plugins/my-custom-plugin/" # make sure you also protect that plugin so that you can sync from remote without losing your changes locally.
+      # if your plugin/theme (authored by you) is not handled with the CI/CD you can remove it from both the exclusion and protected files, so that you can pull and push it to/from prod.
+      
+  othersite:
+    ssh:
+      remote_host: "other-server"
+      remote_path: "/var/www/html/othersite/"
+      local_path: "/local/path/othersite/app/public/"
+    
+    # ... similar configuration for each site
+```
+## Project Structure
+
+```
+wp_chariot/
+├── logo.png                      # Project logo
+├── README.md                     # Project documentation
+└── python/                       # Main code directory
+    ├── __init__.py               # Package initialization
+    ├── cli.py                    # CLI entry point
+    ├── config_yaml.py            # YAML configuration management
+    ├── config.py                 # Configuration system
+    ├── commands/                 # Available commands
+    │   ├── __init__.py
+    │   ├── diff.py               # Show differences
+    │   ├── sync.py               # File synchronization
+    │   ├── database.py           # Database synchronization
+    │   ├── patch.py              # Patch application
+    │   ├── patch_cli.py          # Patch CLI
+    │   ├── patch_utils.py        # Patch CLI utilities
+    │   ├── wp_cli.py             # WP CLI command utilities
+    │   └── media.py              # Media path management
+    ├── sync/                     # Synchronization modules
+    │   ├── __init__.py
+    │   └── files.py              # File synchronization 
+    ├── utils/                    # Shared utilities
+    │   ├── __init__.py
+    │   ├── ssh.py                # SSH operations
+    │   ├── wp_cli.py             # WP-CLI operations
+    │   └── filesystem.py         # Filesystem operations
+    ├── config.yaml               # Global configuration for all sites
+    ├── sites.yaml                # Specific configuration for each site
+    ├── config.example.yaml       # Example global configuration
+    ├── sites.example.yaml        # Example site configuration
+    ├── patches-*.lock.json       # Applied patches registry (per site)
+    ├── setup.py                  # Installation configuration
+    └── requirements.txt          # Dependencies
+```
+
+### Multiple Site Management
+
+The system allows operating with multiple WordPress sites from a single installation of the tools, which:
+
+1. **Centralizes Updates**: Maintaining a single copy of the tools allows for easy updates
+2. **Avoids Duplication**: It is not necessary to clone the project in each WordPress site
+3. **Location Flexibility**: The project can be in any location on your system, not necessarily within the DDEV directory of each site
+
+### Benefits of this Approach
+
+This workflow solves one of the biggest challenges in WordPress development: the time between deciding to work on a site and having a functional local environment. With this method:
+
+- Setup time is drastically reduced (from hours to minutes)
+- No need to download gigabytes of media files that are not part of development
+- The database and files exactly reflect production, eliminating surprises
+- Changes and patches are applied in a controlled and traceable manner
+- Necessary modifications in production can be made safely and consistently
+- You can work with multiple sites from a single installation of the tools
+
+In essence, these tools allow developers to focus on creating real value for their clients instead of dealing with repetitive configuration and synchronization tasks.
+
+## Main Features
+
+- **Bidirectional synchronization** of files between local and remote environment
+- **Database synchronization** with automatic URL and configuration adjustment
+- **Advanced patch management system** for modifying third-party plugins
+- **Media path management** for working with CDNs or external media servers
+- **Security protections** to prevent accidental changes in production
+- **Centralized configuration** through YAML files with environment support
+- **Intuitive command-line interface** with commands and subcommands
+
+## Local dev env requirements
+
+- UNIX based OS (Linux/MacOs) with rsync installed (usually comes installed by default)
+- DDEV installed
+- Python 3.6 or higher installed (preferably with a version manager like asdf)
+- SSH configured with access to the remote server in your ~/.ssh/config file (used/referenced by the alias on your wp_chariot config file)
+
+## Remote server requirements
+
+- UNIX based server with php, wp-cli and rsync installed (most have that installed out of the box)
+- User with regular access to sql and site files
+- Supports different or same servers for different sites
 
 ### The True Hidden Cost
 
-While Enterprise solutions like Pantheon ($1,000+ monthly) or complex CI/CD systems solve these problems, most freelancers and small agencies cannot justify that expense.
+While Enterprise solutions like Pantheon ($1,000+ monthly 🤮) or complex atomic hosting providers solve these problems, most freelancers and small agencies cannot justify that expense.
 
 The real cost isn't just measured in money, but in lost hours:
 
@@ -70,40 +293,6 @@ wp_chariot complements these tools, providing you with:
 - **Independence from expensive providers** without sacrificing professional workflows
 - **Flexibility to use the best tools** without arbitrary restrictions
 
-## Modern WP Workflow with wp_chariot: Maximum Productivity
-
-1. **Initial setup (one-time)**
-
-```bash
-# Clone the tool OUTSIDE your WordPress installation
-git clone https://github.com/aficiomaquinas/wp_chariot.git wp_chariot
-
-# Set up your first site
-cd wp_chariot/python
-python cli.py site --init
-python cli.py site --add mysitedotcom
-```
-
-2. **Daily development (minutes, not hours)**
-
-```bash
-# Initialize the complete environment with a single command
-python cli.py init --with-db --with-media --site mysitedotcom
-
-# Ready to develop! No gigabytes of media, with all plugins
-# and the same database as in production
-```
-
-3. **Secure patch application**
-
-```bash
-# Register a patch for a problematic plugin
-python cli.py patch --add wp-content/plugins/woocommerce/templates/checkout.php --site mysitedotcom
-
-# Edit locally, test, and when ready...
-python cli.py patch-commit --site mysitedotcom
-```
-
 ## Democratizing Professional Development
 
 While large agencies spend thousands on infrastructure, wp_chariot provides you with the same capabilities at a fraction of the cost, allowing you to:
@@ -133,27 +322,30 @@ Manual management of WordPress environments consumes valuable time that could be
 
 In essence, this project belongs to a new generation of open source tools that, powered by technological advances such as AI, seek to return technological control to independent individuals and businesses, following the tradition of the free software movement and its vision of a more open and accessible internet for all.
 
-## Configuration Philosophy and Workflow
-
 ### Single Configuration and Idempotence
 
-This project is based on two fundamental engineering principles:
+This project is based on some fundamental engineering principles:
 
 1. **Split Configuration System**: The project operates with two complementary configuration files:
-   - `config.yaml`: Contains global configuration applicable to all sites
-   - `sites.yaml`: Defines the specific configuration for each individual site
-
+    - `config.yaml`: Contains global configuration applicable to all sites
+    - `sites.yaml`: Defines the specific configuration for each individual site
    This approach allows managing multiple WordPress sites from a single installation of the tools, eliminating inconsistencies and facilitating adaptation to different projects.
 
 2. **Idempotence**: The commands are designed to produce the same final result regardless of how many times they are executed. This allows automating operations without worrying about side effects or intermediate states.
 
-### Multiple Site Management
+3. **Fail Fast**: The codebase embraces the "fail fast" philosophy:
+    - Fail explicitly when critical configuration is missing, rather than guessing or inferring values
+    - Avoid "magic" default values that may cause unexpected behaviors
+    - Maintain idempotency: same input must always produce the same output
+    - Provide clear error messages that explain why something failed and how to fix it
 
-The system allows operating with multiple WordPress sites from a single installation of the tools, which:
+This approach:
+1. **Improves Debugging**: Errors are immediately visible and diagnoses are more straightforward
+2. **Reduces Silent Failures**: No more hidden side effects or unexpected behaviors
+3. **Enforces Proper Configuration**: Users must provide required values explicitly
+4. **Makes Systems More Predictable**: Behavior is consistent and well-defined at all times
 
-1. **Centralizes Updates**: Maintaining a single copy of the tools allows for easy updates
-2. **Avoids Duplication**: It is not necessary to clone the project in each WordPress site
-3. **Location Flexibility**: The project can be in any location on your system, not necessarily within the DDEV directory of each site
+## Configuration Philosophy and Workflow
 
 Each site can have its own complete and independent configuration, and is accessed through a unique alias:
 
@@ -190,12 +382,15 @@ The typical workflow to start developing on an existing WordPress site is:
 
 #### 1. Initial Setup (one-time)
 
+
 ```bash
 # Clone the tools outside your WordPress projects
 git clone https://github.com/aficiomaquinas/wp_chariot.git ~/wp_chariot
+cd ~/wp_chariot/python
+# Don't use the system default python, use a version manager like asdf
+pip install -r requirements.txt
 
 # Create a site and configure it
-cd ~/wp_chariot/python
 python cli.py site --init
 python cli.py site --add mystore
 ```
@@ -238,6 +433,12 @@ At this point, you have a fully functional local environment that:
 - Uses media directly from the production server
 - Is ready for development without having downloaded gigabytes of media files
 
+### Complete Automation
+
+This entire process could be automated in a single command thanks to the idempotence of the system. The `init` command allows setting up a complete development environment with a single click, saving valuable time and eliminating human errors in the configuration process.
+
+> 🔍 **Note**: The principle of idempotence is key in this flow. Even if a step fails or is interrupted, you can simply run the same command again and it will continue from where it left off, without unwanted side effects.
+
 #### 3. Development and Patches
 
 From here, you can:
@@ -253,97 +454,6 @@ python ~/wp_chariot/python/cli.py patch --add wp-content/plugins/woocommerce/fil
 
 # When ready, apply the patch in production
 python ~/wp_chariot/python/cli.py patch-commit --site mystore
-```
-
-### Complete Automation
-
-This entire process could be automated in a single command thanks to the idempotence of the system. The `init` command allows setting up a complete development environment with a single click, saving valuable time and eliminating human errors in the configuration process.
-
-> 🔍 **Note**: The principle of idempotence is key in this flow. Even if a step fails or is interrupted, you can simply run the same command again and it will continue from where it left off, without unwanted side effects.
-
-### Benefits of this Approach
-
-This workflow solves one of the biggest challenges in WordPress development: the time between deciding to work on a site and having a functional local environment. With this method:
-
-- Setup time is drastically reduced (from hours to minutes)
-- No need to download gigabytes of media files that are not part of development
-- The database and files exactly reflect production, eliminating surprises
-- Changes and patches are applied in a controlled and traceable manner
-- Necessary modifications in production can be made safely and consistently
-- You can work with multiple sites from a single installation of the tools
-
-In essence, these tools allow developers to focus on creating real value for their clients instead of dealing with repetitive configuration and synchronization tasks.
-
-## Main Features
-
-- **Bidirectional synchronization** of files between local and remote environment
-- **Database synchronization** with automatic URL and configuration adjustment
-- **Advanced patch management system** for modifying third-party plugins
-- **Media path management** for working with CDNs or external media servers
-- **Security protections** to prevent accidental changes in production
-- **Centralized configuration** through YAML files with environment support
-- **Intuitive command-line interface** with commands and subcommands
-
-## Requirements
-
-- Python 3.6 or higher
-- SSH configured with access to the remote server
-- MySQL/MariaDB (local if using database synchronization)
-- For local development: DDEV on UNIX-based OS (only supported at the moment)
-
-## Installation
-
-1. Clone this repository *outside* of your WordPress installation. It does not require PHP, and by keeping it outside you can keep a single wp_chariot for all your independent WordPress installations:
-```bash
-   git clone https://github.com/aficiomaquinas/wp_chariot.git wp_chariot
-   ```
-
-2. Install dependencies:
-   ```bash
-   cd wp_chariot/python
-   pip install -r requirements.txt
-   ```
-
-3. Create your configuration file:
-   ```bash
-   python cli.py config --init
-   ```
-
-## Project Structure
-
-```
-wp_chariot/
-├── logo.png                      # Project logo
-├── README.md                     # Project documentation
-└── python/                       # Main code directory
-    ├── __init__.py               # Package initialization
-    ├── cli.py                    # CLI entry point
-    ├── config_yaml.py            # YAML configuration management
-    ├── config.py                 # Configuration system
-    ├── commands/                 # Available commands
-    │   ├── __init__.py
-    │   ├── diff.py               # Show differences
-    │   ├── sync.py               # File synchronization
-    │   ├── database.py           # Database synchronization
-    │   ├── patch.py              # Patch application
-    │   ├── patch_cli.py          # Patch CLI utilities
-    │   ├── wp_cli.py             # WP CLI command utilities
-    │   └── media.py              # Media path management
-    ├── sync/                     # Synchronization modules
-    │   ├── __init__.py
-    │   └── files.py              # File synchronization 
-    ├── utils/                    # Shared utilities
-    │   ├── __init__.py
-    │   ├── ssh.py                # SSH operations
-    │   ├── wp_cli.py             # WP-CLI operations
-    │   └── filesystem.py         # Filesystem operations
-    ├── config.yaml               # Global configuration for all sites
-    ├── sites.yaml                # Specific configuration for each site
-    ├── config.example.yaml       # Example global configuration
-    ├── sites.example.yaml        # Example site configuration
-    ├── patches-*.lock.json       # Applied patches registry (per site)
-    ├── setup.py                  # Installation configuration
-    └── requirements.txt          # Dependencies
 ```
 
 ## Configuration
@@ -396,93 +506,6 @@ python ~/wp_chariot/python/cli.py site --list
 
 # Remove a site from the configuration (does not delete files)
 python ~/wp_chariot/python/cli.py site --remove othersite
-```
-
-### Example Configuration Files
-
-#### Global Configuration (config.yaml)
-
-```yaml
-# Global configuration for wp_chariot
-# This file contains common configuration for all sites
-
-# Global WP-CLI settings
-wp_cli:
-  memory_limit: "512M"  # Memory limit for PHP in WP-CLI
-
-# Default security parameters
-security:
-  production_safety: "enabled"  # Protection against overwriting in production
-  backups: "enabled"  # Create automatic backups before dangerous operations
-
-# Default exclusions (can be overridden per site)
-exclusions:
-  # Cache and optimization directories
-  cache: "wp-content/cache/"
-  litespeed: "wp-content/litespeed/"
-  
-  # Media (by default do not synchronize uploads)
-  default-themes: "wp-content/themes/twenty*"
-  uploads-by-year: "wp-content/uploads/[0-9][0-9][0-9][0-9]/"
-
-# Default protected files
-protected_files:
-  - "wp-config.php"
-  - "wp-config-ddev.php"
-  - ".gitignore"
-  - ".ddev/" 
-
-#### Site Configuration (sites.yaml)
-
-```yaml
-# Multiple site configuration for wp_chariot
-
-# Default site (if multiple are configured)
-default: "mystore"
-
-# Individual site configuration
-sites:
-  mystore:
-    ssh:
-      remote_host: "my-server"  # SSH alias in ~/.ssh/config
-      remote_path: "/path/to/wordpress/on/server/"
-      local_path: "/local/path/to/project/app/public/"
-
-    security:
-      production_safety: "enabled"  # Protection against overwriting
-
-    urls:
-      remote: "https://my-site.com"
-      local: "https://my-site.ddev.site"
-
-    database:
-      remote:
-        name: "db_name"
-        user: "db_user"
-        password: "secure_password"
-        host: "localhost"
-
-    media:
-      url: "https://my-site.com/wp-content/uploads/"
-      expert_mode: false
-      path: "../media"
-
-    # DDEV Configuration
-    ddev:
-      webroot: "/var/www/html/app/public"
-
-    # Specific exclusions for this site
-    exclusions:
-      # Custom plugins that should not be synchronized
-      my-plugin: "wp-content/plugins/my-custom-plugin/"
-      
-  othersite:
-    ssh:
-      remote_host: "other-server"
-      remote_path: "/var/www/html/othersite/"
-      local_path: "/local/path/othersite/app/public/"
-    
-    # ... similar configuration for each site
 ```
 
 ## Available Commands
@@ -685,21 +708,6 @@ This simple but effective approach helps keep WordPress secure and functional wi
    - Detection of changes through MD5 checksums
    - Avoids applying patches to modified files
 
-## Next Steps
-
-The project now focuses on:
-
-1. **Improve DDEV integration** for an even smoother experience
-2. **Automatic update system** to facilitate tracking improvements
-3. **Integration tests** to validate complete functionality
-4. **Performance optimization** in projects with a lot of content
-5. **Automatic detection and management of patched plugins** in integrity verification systems
-6. **Advanced migration capabilities** to simplify changes between hosting providers
-
-## License
-
-This project is free software under the [MIT](LICENSE) license.
-
 ## Development and Refactoring Plan
 
 The wp_chariot codebase is undergoing continuous improvement to enhance maintainability and reduce technical debt while preserving its functionality and compatibility.
@@ -758,68 +766,6 @@ wp_chariot/
    - Default values defined in utility modules instead of configuration
    - `get_protected_files()` and `get_default_exclusions()` should be part of configuration
 
-### Core Design Principles
+## License
 
-Throughout the refactoring process, the following design principles are being applied to improve code quality:
-
-#### Fail Fast Principle
-
-The codebase embraces the "fail fast" philosophy:
-- Fail explicitly when critical configuration is missing, rather than guessing or inferring values
-- Avoid "magic" default values that may cause unexpected behaviors
-- Maintain idempotency: same input must always produce the same output
-- Provide clear error messages that explain why something failed and how to fix it
-
-This approach:
-1. **Improves Debugging**: Errors are immediately visible and diagnoses are more straightforward
-2. **Reduces Silent Failures**: No more hidden side effects or unexpected behaviors
-3. **Enforces Proper Configuration**: Users must provide required values explicitly
-4. **Makes Systems More Predictable**: Behavior is consistent and well-defined at all times
-
-## Convención de Commits
-
-Para mantener una estructura clara y consistente en el historial de commits, este proyecto sigue la convención de [Conventional Commits](https://www.conventionalcommits.org/) con la siguiente estructura:
-
-```
-<tipo>(<ámbito opcional>): <descripción>
-
-[cuerpo opcional]
-
-[notas al pie opcionales]
-```
-
-### Tipos de Commits
-
-- `feat`: Nuevas características o funcionalidades
-- `fix`: Corrección de errores
-- `refactor`: Cambios en el código que no agregan funcionalidad ni corrigen errores
-- `docs`: Cambios en la documentación
-- `style`: Cambios que no afectan el significado del código (espacios, formato, etc.)
-- `test`: Adición o corrección de pruebas
-- `chore`: Tareas de mantenimiento, actualizaciones de dependencias, etc.
-- `perf`: Cambios para mejorar el rendimiento
-
-### Ámbitos Recomendados
-
-- `core`: Funcionalidad central
-- `config`: Sistema de configuración
-- `patches`: Sistema de parches
-- `sync`: Sincronización de archivos
-- `db`: Gestión de bases de datos
-- `media`: Gestión de archivos multimedia
-- `wp-cli`: Interacción con WP-CLI
-
-### Ejemplos
-
-```
-feat(patches): implementar detección automática de parches huérfanos
-fix(db): corregir error en importación de bases de datos grandes
-docs: actualizar instrucciones de instalación
-refactor(sync): extraer lógica de sincronización a módulo separado
-```
-
-Esta convención facilita:
-1. La generación automática de changelog
-2. La navegación clara del historial de commits
-3. La comprensión rápida de la intención de cada cambio
-4. La aplicación de filtros y búsquedas en el historial de git
+This project is free software under the [MIT](LICENSE) license.
