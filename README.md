@@ -23,6 +23,12 @@ Do any of these situations sound familiar?
 
 The reality: **68% of WordPress developers admit to working directly in production at least once a week**, simply because setting up a local environment for each project takes too much time. AI made that up but it's funny and it really makes my point. If you come to think about it, it sounds concerning, and it should be!
 
+Production sites often have transactionality, logs, auto-updates, security plugins, cache plugins. Replicating and dev env can take some time, because it involves several steps, such as dumping the db, importing, syncing the wp files (except the media perhaps, the cache plugins, the security plugins), then replacing the urls for your local machine. This process is pretty darn slow to do manually. This tool uses DDEV to scaffold a working local dev env, a production replica with one click.
+
+## Why this and not Github Actions or CI/CD? Wasn't this what git was created for? 
+
+Github Actions is a popular CI/CD platform. If you manage a WP site and you, too, are the author of one or several of it's plugins or themes, those should use Git + CI/CD or Wordpress.org versioning for syncing and updating that theme or plugin, ideally. This tool works along your existing CI/CD for your theme or plugin (just add them to the exceptions) but provides tools for automating the sync and most importantly the replicating capability from production to be able to spin up a local dev env quickly with nothing more on the source server than standard UNIX tools (rsync).
+
 
 ## Modern WP Workflow with wp_chariot: Maximum Productivity
 
