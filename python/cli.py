@@ -135,6 +135,50 @@ def sync_db_command(dry_run, direction, verbose, site):
     if not success:
         sys.exit(1)
 
+@cli.command("sync-all")
+@click.option("--dry-run", is_flag=True, help="Simulate operation without making changes")
+@click.option("--direction", type=click.Choice(['from-remote', 'to-remote']), 
+              default='from-remote', help="Direction of synchronization")
+@click.option("--clean/--no-clean", default=True, help="Clean excluded files after synchronization")
+@click.option("--skip-backup", is_flag=True, help="Skip creating a full backup before synchronizing from remote")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
+@site_option
+def sync_all_command(dry_run, direction, clean, skip_backup, verbose, site):
+    """
+    Synchronizes both database and files between environments in a single command.
+    
+    This command performs the following operations in sequence:
+    1. Synchronizes the database
+    2. Synchronizes files (which includes media path configuration)
+    
+    It is equivalent to executing the following commands in sequence:
+    - sync-db
+    - sync-files
+    """
+    # Select site if necessary
+    config = get_yaml_config(verbose=verbose)
+    if not config.select_site(site):
+        sys.exit(1)
+    
+    print("🚀 Starting complete synchronization...")
+    
+    # 1. Synchronize database
+    print("\n🗄️ Step 1: Synchronizing database")
+    success = sync_database(direction=direction, dry_run=dry_run, verbose=verbose)
+    if not success:
+        print("❌ Error in database synchronization")
+        sys.exit(1)
+    
+    # 2. Synchronize files
+    print("\n📂 Step 2: Synchronizing files")
+    success = sync_files(direction=direction, dry_run=dry_run, clean=clean, skip_full_backup=skip_backup)
+    if not success:
+        print("❌ Error in file synchronization")
+        sys.exit(1)
+    
+    print("\n✅ Complete synchronization finished successfully")
+    print("🌟 Ready to continue working!")
+
 @cli.command("media-path")
 @click.option("--remote", is_flag=True, help="Apply on the remote server instead of locally")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")

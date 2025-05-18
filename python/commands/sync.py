@@ -12,6 +12,7 @@ import shutil
 import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union, Set
+import fnmatch
 
 from config_yaml import get_yaml_config
 from utils.ssh import SSHClient, run_rsync
@@ -34,8 +35,14 @@ class FileSynchronizer:
         self.remote_path = self.config.get("ssh", "remote_path")
         self.local_path = Path(self.config.get("ssh", "local_path"))
         
-        # Ensure remote paths end with a single / 
-        self.remote_path = self.remote_path.rstrip('/') + '/'
+        # Ensure remote paths end with a single /
+        # IMPORTANTE: Para rsync, la barra al final significa "copiar el contenido" no "crear el directorio"
+        if not self.remote_path.endswith('/'):
+            self.remote_path += '/'
+        
+        # Asegurar que la ruta local sea absoluta
+        if not self.local_path.is_absolute():
+            print(f"⚠️ La ruta local '{self.local_path}' no es absoluta. Se recomienda usar rutas absolutas.")
             
         # Load exclusions
         self.exclusions = self.config.get_exclusions()
@@ -67,7 +74,7 @@ class FileSynchronizer:
             for file_path, backup_path in patched_tuples:
                 if file_path:
                     patched_files.append(file_path)
-                if backup_path:
+                if backup_path and backup_path not in patched_files:  # Evitar duplicados
                     patched_files.append(backup_path)
             
             return patched_files
@@ -86,16 +93,23 @@ class FileSynchronizer:
         Returns:
             Tuple[str, str]: Source and destination paths
         """
-        # Ensure the remote path doesn't end with multiple /
-        remote_path = self.remote_path.rstrip('/')
+        # IMPORTANTE: Para rsync, mantener siempre la barra al final
+        # Si termina con /, significa "copiar el contenido" no "crear el directorio"
+        remote_path = self.remote_path
+        
+        # Asegurarse de que remote_path siempre termine con /
+        if not remote_path.endswith('/'):
+            remote_path += '/'
         
         if direction == "from-remote":
             # From remote to local
             source = f"{self.remote_host}:{remote_path}"
-            dest = str(self.local_path)
+            # Asegurarse de que local_path termine con /
+            dest = str(self.local_path) + '/' if not str(self.local_path).endswith('/') else str(self.local_path)
         else:
             # From local to remote
-            source = str(self.local_path)
+            # Asegurarse de que local_path termine con /
+            source = str(self.local_path) + '/' if not str(self.local_path).endswith('/') else str(self.local_path)
             dest = f"{self.remote_host}:{remote_path}"
             
         return source, dest
@@ -153,6 +167,10 @@ class FileSynchronizer:
         # Prepare paths (always from remote for diff)
         source, dest = self._prepare_paths("from-remote")
         
+        # DEPURACIÓN - Mostrar rutas exactas que se usarán
+        print(f"DEBUG: Source path: {source}")
+        print(f"DEBUG: Destination path: {dest}")
+        
         # Get exclusions and verify they are a valid dictionary
         exclusions = self.exclusions.copy() if self.exclusions else {}
         if not exclusions:
@@ -182,6 +200,10 @@ class FileSynchronizer:
             "--itemize-changes",  # show detailed changes
             "--delete",  # delete files that don't exist in source
         ]
+        
+        # Add verbose for better error diagnosis
+        if verbose:
+            options.append("--verbose")
         
         # Run rsync in comparison mode
         # Always use dry_run=True because this method is only to show differences
@@ -471,65 +493,66 @@ class FileSynchronizer:
         
     def _clean_excluded_files(self, direction: str) -> bool:
         """
-        Cleans (deletes) excluded files that may have been downloaded in previous synchronizations
+        Cleans excluded files that were not deleted during synchronization
+        because they are in the exclusion list
         
         Args:
             direction: Direction of synchronization ("from-remote" or "to-remote")
             
         Returns:
-            bool: True if the operation was successful, False otherwise
+            bool: True if the cleaning was successful, False otherwise
         """
-        # This only makes sense for from-remote direction and with exclusions
-        if direction != "from-remote" or not self.exclusions:
+        # Only clean when the direction is from-remote
+        if direction != "from-remote":
             return True
             
-        print(f"🧹 Cleaning excluded files in local environment...")
+        print("🔄 Cleaning excluded files...")
         
-        excluded_files = []
-        excluded_dirs = []
+        # Get the list of patched files to NEVER delete
+        patched_files = self._load_patched_files()
+        patched_files_normalized = [os.path.normpath(pf) for pf in patched_files if pf]
         
-        # Process exclusions
-        for pattern in self.exclusions.values():
-            # Skip if it's a pattern that doesn't refer to a specific file
-            if '*' in pattern or '?' in pattern:
+        # For each exclusion find corresponding files/directories to delete
+        for key, pattern in self.exclusions.items():
+            if not pattern:
                 continue
                 
-            # Check if it's a directory or file
-            local_path = self.local_path / pattern
-            if os.path.isdir(local_path):
-                excluded_dirs.append(pattern)
-            elif os.path.isfile(local_path):
-                excluded_files.append(pattern)
-        
-        # If we found no files to clean
-        if not excluded_files and not excluded_dirs:
-            print("✅ No excluded files need to be cleaned")
-            return True
-        
-        # Show what we will clean
-        if excluded_files:
-            print(f"🗑️ Found {len(excluded_files)} excluded files to remove:")
-            for file in excluded_files:
-                print(f"   - {file}")
-                # Delete the file
+            # Skip patterns with wildcards (they need special handling)
+            if "*" in pattern or "?" in pattern or "[" in pattern:
+                continue
+                
+            # Convert pattern to directory path
+            directory = os.path.normpath(os.path.join(self.local_path, pattern))
+            
+            # Verify if this directory exists
+            if os.path.exists(directory):
+                # PROTECCIÓN: Verificar que no sea un archivo con parche
+                normalized_dir = os.path.normpath(directory)
+                if normalized_dir in patched_files_normalized:
+                    print(f"🛡️ No eliminando archivo con parche: {directory}")
+                    continue
+                    
+                # No eliminar directorios protegidos
+                is_protected = False
+                for protected_pattern in self.protected_files:
+                    if fnmatch.fnmatch(directory, protected_pattern):
+                        is_protected = True
+                        break
+                        
+                if is_protected:
+                    print(f"🛡️ No eliminando directorio protegido: {directory}")
+                    continue
+                
+                # Delete the directory/file
+                print(f"🗑️ Cleaning excluded: {directory}")
+                
                 try:
-                    local_path = self.local_path / file
-                    if os.path.isfile(local_path):
-                        os.unlink(local_path)
+                    if os.path.isfile(directory):
+                        os.unlink(directory)
+                    elif os.path.isdir(directory):
+                        shutil.rmtree(directory)
                 except Exception as e:
-                    print(f"   ⚠️ Error deleting file {file}: {str(e)}")
-        
-        if excluded_dirs:
-            print(f"🗑️ Found {len(excluded_dirs)} excluded directories to remove:")
-            for directory in excluded_dirs:
-                print(f"   - {directory}")
-                # Delete the directory recursively
-                try:
-                    local_path = self.local_path / directory
-                    if os.path.isdir(local_path):
-                        shutil.rmtree(local_path)
-                except Exception as e:
-                    print(f"   ⚠️ Error deleting directory {directory}: {str(e)}")
+                    print(f"   ⚠️ Error deleting {directory}: {str(e)}")
         
         print("✅ Finished cleaning excluded files")
         return True
@@ -580,10 +603,13 @@ class FileSynchronizer:
                 # Add each patched file to exclusions
                 for i, patched_file in enumerate(patched_files):
                     if patched_file:
-                        exclusions[f"patched_file_{i}"] = patched_file
+                        # Crear clave única y descriptiva para ver mejor en los logs
+                        key = f"patched_{i}_{os.path.basename(patched_file)}"
+                        exclusions[key] = patched_file
                 
                 if patched_files:
-                    print(f"ℹ️ Excluding {len(patched_files)} patched files as configured")
+                    print(f"🔒 Protegiendo {len(patched_files)} archivos con parches como configurado")
+                    print("   Estos archivos NO se sincronizarán para evitar perder cambios")
         except Exception as e:
             print(f"⚠️ Error processing patch exclusions: {str(e)}")
             print("   Continuing without patch exclusions")
@@ -708,54 +734,31 @@ def sync_files(direction: str = "from-remote", dry_run: bool = False, clean: boo
     Returns:
         bool: True if the synchronization was successful, False otherwise
     """
-    # Create backup if going from-remote and not in dry-run mode or explicitly skipped
-    if direction == "from-remote" and not dry_run and not skip_full_backup:
-        print("📦 Creating full backup before synchronizing files...")
-        
-        # Create a full backup (calls create_backup with all=True)
-        success, backup_path = create_full_backup()
-        
-        if not success:
-            print("⚠️ Failed to create backup. Continuing with synchronization anyway.")
-            # Don't abort on backup failure, continue with sync
-        else:
-            print(f"✅ Backup created: {backup_path}")
-            
-    # Handle the old pattern where sync_files was monkey-patched by a security check
-    # that skipped the backup. We no longer need this pattern, but keep it for compatibility.
-    # Now we use the skip_full_backup parameter instead.
+    # Crear sincronizador
     try:
-        # Create synchronizer
         synchronizer = FileSynchronizer()
         
-        # Run synchronization
-        return synchronizer.sync(direction=direction, dry_run=dry_run, clean=clean)
-    except Exception as e:
-        import traceback
-        print(f"❌ Error during synchronization: {str(e)}")
-        traceback.print_exc()
-        return False
-        
-    # For backwards compatibility in case something tries to monkey-patch sync_files
-    def sync_without_backup(*args, **kwargs):
-        # Save original module
-        import sys
-        original_module = sys.modules[__name__]
-        
-        # Store original function
-        original_sync = original_module.sync_files
-        
-        try:
-            # Create synchronizer
-            synchronizer = FileSynchronizer()
+        # Crear backup completo si se sincroniza desde remoto (y no es dry-run o explícitamente omitido)
+        if direction == "from-remote" and not dry_run and not skip_full_backup:
+            print("📦 Creando backup completo antes de sincronizar archivos...")
             
-            # Run synchronization
-            return synchronizer.sync(*args, **kwargs)
-        finally:
-            # Restore original function
-            original_module.sync_files = original_sync
-    
-    # For backwards compatibility
-    sync_files.no_backup = sync_without_backup
-    
-    return sync_without_backup(direction, dry_run, clean) 
+            try:
+                backup_path = create_full_backup()
+                print(f"✅ Backup creado exitosamente: {backup_path}")
+            except Exception as e:
+                print(f"❌ ERROR: No se pudo crear el backup completo: {str(e)}")
+                print("⚠️ ADVERTENCIA: Sincronizar sin backup puede causar pérdida de datos.")
+                confirm = input("¿Desea continuar SIN backup? (escriba 'SI' para confirmar): ")
+                if confirm.upper() != "SI":
+                    print("Operación cancelada por el usuario.")
+                    return False
+                print("Continuando sincronización sin backup bajo su responsabilidad.")
+        
+        # Ejecutar sincronización
+        return synchronizer.sync(direction=direction, dry_run=dry_run, clean=clean)
+        
+    except Exception as e:
+        print(f"❌ Error durante la sincronización: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False 

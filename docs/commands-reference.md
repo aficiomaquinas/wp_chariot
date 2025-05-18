@@ -17,7 +17,7 @@ For brevity in the examples below, we'll use `cli.py` without the full path.
 | Category | Commands |
 |----------|----------|
 | [Setup](#setup-commands) | `site`, `config`, `check` |
-| [Synchronization](#synchronization-commands) | `sync-files`, `sync-db`, `init` |
+| [Synchronization](#synchronization-commands) | `sync-files`, `sync-db`, `init`, `sync-all` |
 | [Patch Management](#patch-management-commands) | `patch`, `patch-commit`, `rollback` |
 | [Media](#media-commands) | `media-path` |
 | [Verification](#verification-commands) | `diff` |
@@ -47,6 +47,7 @@ Commands for synchronizing files and databases between environments.
 | `init` | Initialize complete environment | `--with-db`: Include database sync<br>`--with-media`: Configure media paths<br>`--site <name>`: Specify site | `cli.py init --with-db --with-media --site mystore` |
 | `sync-files` | Synchronize files | `--direction`: `from-remote` (default) or `to-remote`<br>`--dry-run`: Simulate without changes<br>`--site <name>`: Specify site | `cli.py sync-files --site mystore` |
 | `sync-db` | Synchronize database | `--direction`: `from-remote` (default) or `to-remote` (dangerous)<br>`--dry-run`: Simulate without changes<br>`--site <name>`: Specify site | `cli.py sync-db --site mystore` |
+| `sync-all` | Synchronize both database and files | `--direction`: `from-remote` (default) or `to-remote`<br>`--dry-run`: Simulate without changes<br>`--clean/--no-clean`: Clean excluded files<br>`--skip-backup`: Skip full backup<br>`--site <name>`: Specify site | `cli.py sync-all --site mystore` |
 
 ## Patch Management Commands
 
@@ -85,15 +86,16 @@ For convenience, you can create shell aliases to simplify common commands:
 # Add to your .bashrc or .zshrc
 alias wp-chariot="python ~/wp_chariot/python/cli.py"
 alias wp-init="wp-chariot init --with-db --with-media"
-alias wp-sync="wp-chariot sync-files"
-alias wp-db="wp-chariot sync-db"
+alias wp-sync-files="wp-chariot sync-files"
+alias wp-sync-db="wp-chariot sync-db"
+alias wp-sync-all="wp-chariot sync-all"
 ```
 
 Then use them like:
 
 ```bash
 wp-init --site mystore
-wp-sync --site mystore
+wp-sync-all --site mystore
 ```
 
 ## Advanced Usage
