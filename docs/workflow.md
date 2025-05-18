@@ -131,6 +131,12 @@ python ~/wp_chariot/python/cli.py sync-files --site mysite
 
 # Update database from production
 python ~/wp_chariot/python/cli.py sync-db --site mysite
+
+# Configure media paths (if needed)
+python ~/wp_chariot/python/cli.py media-path --site mysite
+
+# Or use sync-all to do all the above in one command
+python ~/wp_chariot/python/cli.py sync-all --site mysite
 ```
 
 ## Workflow Variants
@@ -191,6 +197,10 @@ Keep your local environment in sync with production to catch and address potenti
 # Regular sync workflow
 python ~/wp_chariot/python/cli.py sync-files --site mysite
 python ~/wp_chariot/python/cli.py sync-db --site mysite
+python ~/wp_chariot/python/cli.py media-path --site mysite
+
+# Or use the all-in-one sync command
+python ~/wp_chariot/python/cli.py sync-all --site mysite
 ```
 
 ### 5. Document Site-Specific Workflows

@@ -44,10 +44,10 @@ Commands for synchronizing files and databases between environments.
 
 | Command | Description | Options | Example |
 |---------|-------------|---------|---------|
-| `init` | Initialize complete environment | `--with-db`: Include database sync<br>`--with-media`: Configure media paths<br>`--site <name>`: Specify site | `cli.py init --with-db --with-media --site mystore` |
-| `sync-files` | Synchronize files | `--direction`: `from-remote` (default) or `to-remote`<br>`--dry-run`: Simulate without changes<br>`--site <name>`: Specify site | `cli.py sync-files --site mystore` |
-| `sync-db` | Synchronize database | `--direction`: `from-remote` (default) or `to-remote` (dangerous)<br>`--dry-run`: Simulate without changes<br>`--site <name>`: Specify site | `cli.py sync-db --site mystore` |
-| `sync-all` | Synchronize both database and files | `--direction`: `from-remote` (default) or `to-remote`<br>`--dry-run`: Simulate without changes<br>`--clean/--no-clean`: Clean excluded files<br>`--skip-backup`: Skip full backup<br>`--site <name>`: Specify site | `cli.py sync-all --site mystore` |
+| `init` | Initialize complete environment | `--with-db`: Include database sync<br>`--with-media`: Configure media paths<br>`--site <n>`: Specify site | `cli.py init --with-db --with-media --site mystore` |
+| `sync-files` | Synchronize files | `--direction`: `from-remote` (default) or `to-remote`<br>`--dry-run`: Simulate without changes<br>`--clean/--no-clean`: Clean excluded files<br>`--skip-backup`: Skip full backup<br>`--site <n>`: Specify site | `cli.py sync-files --site mystore` |
+| `sync-db` | Synchronize database | `--direction`: `from-remote` (default) or `to-remote` (dangerous)<br>`--dry-run`: Simulate without changes<br>`--site <n>`: Specify site | `cli.py sync-db --site mystore` |
+| `sync-all` | Synchronize database, files, and configure media path | `--direction`: `from-remote` (default) or `to-remote`<br>`--dry-run`: Simulate without changes<br>`--clean/--no-clean`: Clean excluded files<br>`--skip-backup`: Skip full backup<br>`--skip-media`: Skip media path configuration<br>`--site <n>`: Specify site | `cli.py sync-all --site mystore` |
 
 ## Patch Management Commands
 
@@ -68,7 +68,7 @@ Commands for media management.
 
 | Command | Description | Options | Example |
 |---------|-------------|---------|---------|
-| `media-path` | Configure media paths | `--remote`: Apply on remote server<br>`--verbose`: Show detailed info<br>`--site <name>`: For specific site | `cli.py media-path --site mystore` |
+| `media-path` | Configure media paths using WP Original Media Path plugin | `--remote`: Apply on remote server<br>`--verbose`: Show detailed info<br>`--site <n>`: For specific site | `cli.py media-path --site mystore` |
 
 ## Verification Commands
 
@@ -89,13 +89,15 @@ alias wp-init="wp-chariot init --with-db --with-media"
 alias wp-sync-files="wp-chariot sync-files"
 alias wp-sync-db="wp-chariot sync-db"
 alias wp-sync-all="wp-chariot sync-all"
+alias wp-media="wp-chariot media-path"
 ```
 
 Then use them like:
 
 ```bash
 wp-init --site mystore
-wp-sync-all --site mystore
+wp-sync-files --site mystore  # Solo sincroniza archivos
+wp-sync-all --site mystore    # Sincroniza DB, archivos y configura media path
 ```
 
 ## Advanced Usage

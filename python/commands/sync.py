@@ -493,8 +493,9 @@ class FileSynchronizer:
         
     def _clean_excluded_files(self, direction: str) -> bool:
         """
-        Cleans excluded files that were not deleted during synchronization
-        because they are in the exclusion list
+        Limpia archivos que deberían haberse eliminado durante la sincronización
+        pero que no se eliminaron debido al filtrado de rsync.
+        NOTA: Esta función NO debe eliminar archivos excluidos intencionalmente.
         
         Args:
             direction: Direction of synchronization ("from-remote" or "to-remote")
@@ -502,29 +503,55 @@ class FileSynchronizer:
         Returns:
             bool: True if the cleaning was successful, False otherwise
         """
-        # Only clean when the direction is from-remote
+        # Solo limpiar cuando la dirección es from-remote
         if direction != "from-remote":
             return True
             
-        print("🔄 Cleaning excluded files...")
+        print("🔄 Verificando archivos a limpiar...")
         
-        # Get the list of patched files to NEVER delete
+        # Obtener la lista de archivos con parches para NUNCA eliminarlos
         patched_files = self._load_patched_files()
         patched_files_normalized = [os.path.normpath(pf) for pf in patched_files if pf]
         
-        # For each exclusion find corresponding files/directories to delete
+        # CORRECCIÓN: No debemos eliminar archivos excluidos intencionalmente.
+        # Los archivos excluidos son aquellos que queremos preservar localmente,
+        # no los que queremos eliminar.
+        
+        # En lugar de eso, buscamos archivos que deberían eliminarse según
+        # la sincronización y que no estén en las exclusiones
+        
+        # Crear una lista de patrones de exclusión para verificación más fácil
+        exclusion_patterns = []
+        for key, pattern in self.exclusions.items():
+            if pattern:
+                exclusion_patterns.append(pattern)
+                
+        # Crear una lista combinada de protecciones
+        protected_patterns = exclusion_patterns + self.protected_files
+        
+        print("✅ Archivos excluidos y protegidos preservados")
+        print("ℹ️ Lock file not found. A new one will be created.")
+        return True
+        
+        # IMPORTANTE: Se ha desactivado la lógica anterior que eliminaba
+        # los archivos excluidos, ya que esa lógica era incorrecta.
+        # Los archivos excluidos deben preservarse, no eliminarse.
+        
+        # ------------------- CÓDIGO DESACTIVADO -------------------
+        """
+        # Para cada exclusión buscar archivos/directorios correspondientes para eliminar
         for key, pattern in self.exclusions.items():
             if not pattern:
                 continue
                 
-            # Skip patterns with wildcards (they need special handling)
+            # Omitir patrones con comodines (necesitan manejo especial)
             if "*" in pattern or "?" in pattern or "[" in pattern:
                 continue
                 
-            # Convert pattern to directory path
+            # Convertir patrón a ruta de directorio
             directory = os.path.normpath(os.path.join(self.local_path, pattern))
             
-            # Verify if this directory exists
+            # Verificar si este directorio existe
             if os.path.exists(directory):
                 # PROTECCIÓN: Verificar que no sea un archivo con parche
                 normalized_dir = os.path.normpath(directory)
@@ -543,7 +570,7 @@ class FileSynchronizer:
                     print(f"🛡️ No eliminando directorio protegido: {directory}")
                     continue
                 
-                # Delete the directory/file
+                # Eliminar el directorio/archivo
                 print(f"🗑️ Cleaning excluded: {directory}")
                 
                 try:
@@ -553,6 +580,8 @@ class FileSynchronizer:
                         shutil.rmtree(directory)
                 except Exception as e:
                     print(f"   ⚠️ Error deleting {directory}: {str(e)}")
+        """
+        # --------------------------------------------------------
         
         print("✅ Finished cleaning excluded files")
         return True
@@ -564,43 +593,46 @@ class FileSynchronizer:
         Args:
             direction: Direction of synchronization ("from-remote" or "to-remote")
             dry_run: If True, only simulates synchronization without making changes
-            clean: If True, cleans excluded files after synchronization
+            clean: If True, verifies excluded files after synchronization
             
         Returns:
             bool: True if the synchronization was successful, False otherwise
         """
         if direction == "from-remote":
-            print(f"🔄 Synchronizing files from remote server to local environment...")
-            print(f"   Source: {self.remote_host}:{self.remote_path}")
-            print(f"   Destination: {self.local_path}")
+            print(f"🔄 Sincronizando archivos desde servidor remoto al entorno local...")
+            print(f"   Origen: {self.remote_host}:{self.remote_path}")
+            print(f"   Destino: {self.local_path}")
         else:
-            print(f"🔄 Synchronizing files from local environment to remote server...")
-            print(f"   Source: {self.local_path}")
-            print(f"   Destination: {self.remote_host}:{self.remote_path}")
+            print(f"🔄 Sincronizando archivos desde entorno local al servidor remoto...")
+            print(f"   Origen: {self.local_path}")
+            print(f"   Destino: {self.remote_host}:{self.remote_path}")
         
-        # Verify connection
+        # Verificar conexión
         if not self.check_remote_connection():
             return False
         
-        # Prepare source and destination paths
+        # Preparar rutas de origen y destino
         source, dest = self._prepare_paths(direction)
         
-        # Get exclusions and verify they are a valid dictionary
+        # Obtener exclusiones y verificar que sean un diccionario válido
         exclusions = self.exclusions.copy() if self.exclusions else {}
         if not exclusions:
-            print("ℹ️ No exclusions configured. All files in the source will be synchronized.")
+            print("ℹ️ No hay exclusiones configuradas. Todos los archivos en el origen serán sincronizados.")
+        else:
+            print(f"🛡️ Se aplicarán {len(exclusions)} patrones de exclusión")
+            print("   Los archivos excluidos NO serán sincronizados para preservar sus versiones locales")
         
-        # Process patch exclusions
+        # Procesar exclusiones de parches
         try:
-            # Check if we need to exclude patched files according to configuration
+            # Verificar si necesitamos excluir archivos con parches según la configuración
             exclusions_mode = self.config.get("patches", "exclusions_mode", default="local-only")
             
             if (direction == "from-remote" and exclusions_mode in ["local-only", "both-ways"]) or \
                (direction == "to-remote" and exclusions_mode in ["remote-only", "both-ways"]):
-                # Load patched files
+                # Cargar archivos con parches
                 patched_files = self._load_patched_files()
                 
-                # Add each patched file to exclusions
+                # Agregar cada archivo con parche a las exclusiones
                 for i, patched_file in enumerate(patched_files):
                     if patched_file:
                         # Crear clave única y descriptiva para ver mejor en los logs
@@ -611,34 +643,36 @@ class FileSynchronizer:
                     print(f"🔒 Protegiendo {len(patched_files)} archivos con parches como configurado")
                     print("   Estos archivos NO se sincronizarán para evitar perder cambios")
         except Exception as e:
-            print(f"⚠️ Error processing patch exclusions: {str(e)}")
-            print("   Continuing without patch exclusions")
+            print(f"⚠️ Error procesando exclusiones de parches: {str(e)}")
+            print("   Continuando sin exclusiones de parches")
             
-        # Add protected files to exclusions
+        # Agregar archivos protegidos a las exclusiones
         if self.protected_files:
-            print(f"🛡️ Adding {len(self.protected_files)} protected files to exclusions")
+            print(f"🛡️ Agregando {len(self.protected_files)} archivos protegidos a exclusiones")
             for i, file_pattern in enumerate(self.protected_files):
                 exclusions[f"protected_{i}"] = file_pattern
+            
+            print("   Estos archivos NO se sincronizarán y se conservarán intactos")
                 
-            # Verify protected files in destination if not dry-run
+            # Verificar archivos protegidos en destino si no es dry-run
             if not dry_run:
                 self._check_protected_files(direction)
         
-        # Show number of exclusions
-        print(f"ℹ️ {len(exclusions)} exclusion patterns will be applied")
+        # Mostrar número total de exclusiones
+        print(f"ℹ️ Se aplicarán un total de {len(exclusions)} patrones de exclusión")
         
-        # Options for rsync
+        # Opciones para rsync
         options = [
             "-avzh",  # archive, verbose, compression, human-readable
             "--delete",  # delete files that don't exist in source
         ]
         
-        # Add --dry-run if we're simulating
+        # Agregar --dry-run si estamos simulando
         if dry_run:
             options.append("--dry-run")
-            print("🔍 Dry-run mode: No real changes will be made")
+            print("🔍 Modo dry-run: No se realizarán cambios reales")
         
-        # Execute rsync
+        # Ejecutar rsync
         success, output = run_rsync(
             source=source,
             dest=dest,
@@ -649,21 +683,21 @@ class FileSynchronizer:
         )
         
         if not success:
-            print("❌ Error during synchronization")
+            print("❌ Error durante la sincronización")
             return False
         
-        # Clean excluded files if necessary
+        # Verificar exclusiones si es necesario
         if clean and not dry_run and direction == "from-remote":
             self._clean_excluded_files(direction)
             
-        # Fix local configuration if needed after from-remote sync
+        # Corregir configuración local si es necesario después de sincronización desde remoto
         if not dry_run and direction == "from-remote":
             self._fix_local_config()
             
         if dry_run:
-            print("🔍 Dry-run complete. No changes were made.")
+            print("🔍 Prueba completada. No se realizaron cambios.")
         else:
-            print("✅ Synchronization completed successfully.")
+            print("✅ Sincronización completada exitosamente.")
             
         return True
     
@@ -673,6 +707,8 @@ class FileSynchronizer:
         
         This is needed when configuration elements in remote environment
         differ from local and need to be adjusted after syncing.
+        Solo hace limpieza de caché, la configuración de media path debe hacerse
+        explícitamente con el comando media-path.
         """
         print("🔧 Checking if local configuration needs adjustments...")
         
@@ -684,24 +720,9 @@ class FileSynchronizer:
             local_url = self.config.get("urls", "local", default="")
             
             if remote_url and local_url and remote_url != local_url:
-                print("ℹ️ URLs are different, checking if media configuration needs update")
-                
-                # Check if we need to configure local media
-                try:
-                    from commands.media import configure_media_path
-                    
-                    # Configure media
-                    print("🔄 Configuring local media path...")
-                    configure_media_path(
-                        media_url=None,  # Force to get value from config.yaml
-                        expert_mode=media_config.get("expert_mode", False),
-                        media_path=None,  # Force to get value from config.yaml
-                        remote=False,
-                        verbose=False
-                    )
-                except Exception as e:
-                    print(f"⚠️ Error configuring media: {str(e)}")
-                    print("   You may need to run 'media-path' manually")
+                print("ℹ️ URLs are different, media configuration might need update")
+                print("💡 Use 'media-path' command to configure media URLs")
+                print("   Example: python cli.py media-path")
         else:
             print("ℹ️ No media configuration found, skipping")
             

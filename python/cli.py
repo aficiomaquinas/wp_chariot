@@ -89,6 +89,10 @@ def sync_files_command(dry_run, direction, clean, skip_backup, patch_exclusions,
     - local-only: excludes patches only when synchronizing from remote to local
     - remote-only: excludes patches only when synchronizing from local to remote  
     - both-ways: excludes patches in both directions
+    
+    NOTE: This command only synchronizes files and does not configure media paths.
+    To configure media paths, use the dedicated 'media-path' command or 'sync-all'
+    command which includes media path configuration.
     """
     # Select site if necessary
     config = get_yaml_config()
@@ -142,18 +146,21 @@ def sync_db_command(dry_run, direction, verbose, site):
 @click.option("--clean/--no-clean", default=True, help="Clean excluded files after synchronization")
 @click.option("--skip-backup", is_flag=True, help="Skip creating a full backup before synchronizing from remote")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
+@click.option("--skip-media", is_flag=True, help="Skip media path configuration (default: false)")
 @site_option
-def sync_all_command(dry_run, direction, clean, skip_backup, verbose, site):
+def sync_all_command(dry_run, direction, clean, skip_backup, verbose, skip_media, site):
     """
     Synchronizes both database and files between environments in a single command.
     
     This command performs the following operations in sequence:
     1. Synchronizes the database
-    2. Synchronizes files (which includes media path configuration)
+    2. Synchronizes files 
+    3. Configures media paths (unless --skip-media is specified)
     
     It is equivalent to executing the following commands in sequence:
     - sync-db
     - sync-files
+    - media-path (only in from-remote direction)
     """
     # Select site if necessary
     config = get_yaml_config(verbose=verbose)
@@ -175,6 +182,25 @@ def sync_all_command(dry_run, direction, clean, skip_backup, verbose, site):
     if not success:
         print("❌ Error in file synchronization")
         sys.exit(1)
+    
+    # 3. Configure media path (only in from-remote direction)
+    if not skip_media and direction == 'from-remote' and not dry_run:
+        print("\n🖼️ Step 3: Configuring media paths")
+        # Get the configuration
+        media_config = config.config.get("media", {})
+        expert_mode = media_config.get("expert_mode", False)
+        
+        from commands.media import configure_media_path
+        success = configure_media_path(
+            media_url=None,  # Force to get value from config.yaml
+            expert_mode=expert_mode,
+            media_path=None,  # Force to get value from config.yaml
+            remote=False,
+            verbose=verbose
+        )
+        
+        if not success:
+            print("⚠️ Warning: Media path configuration failed, but synchronization was completed")
     
     print("\n✅ Complete synchronization finished successfully")
     print("🌟 Ready to continue working!")
