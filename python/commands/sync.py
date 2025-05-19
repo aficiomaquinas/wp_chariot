@@ -177,6 +177,29 @@ class FileSynchronizer:
             if not only_patches:
                 print("ℹ️ No exclusions configured.")
         
+        # Procesar exclusiones de parches (como en el método sync)
+        try:
+            # Verificar si necesitamos excluir archivos con parches según la configuración
+            exclusions_mode = self.config.get("patches", "exclusions_mode", default="local-only")
+            
+            if exclusions_mode in ["local-only", "both-ways"]:
+                # Cargar archivos con parches
+                patched_files = self._load_patched_files()
+                
+                # Agregar cada archivo con parche a las exclusiones
+                for i, patched_file in enumerate(patched_files):
+                    if patched_file:
+                        # Crear clave única y descriptiva para ver mejor en los logs
+                        key = f"patched_{i}_{os.path.basename(patched_file)}"
+                        exclusions[key] = patched_file
+                
+                if patched_files and not only_patches:
+                    print(f"🔒 Protegiendo {len(patched_files)} archivos con parches durante la comparación")
+        except Exception as e:
+            if not only_patches:
+                print(f"⚠️ Error procesando exclusiones de parches: {str(e)}")
+                print("   Continuando sin exclusiones de parches")
+        
         # Add protected files to exclusions so they don't appear in the diff
         if self.protected_files:
             if not only_patches:
