@@ -4,13 +4,40 @@ This document provides a comprehensive reference for all available wp_chariot co
 
 ## Command Format
 
-All commands follow this general format:
+All commands can be executed in several ways:
+
+### Using uv run (recommended)
+
+```bash
+# Using the entry point (shortest)
+uv run wpchariot <command> [options] [--site sitename]
+# or
+uv run wp_chariot <command> [options] [--site sitename]
+
+# Using Python directly
+uv run python cli.py <command> [options] [--site sitename]
+```
+
+### Using activated virtual environment
+
+```bash
+# Activate the environment first
+cd ~/wp_chariot/python
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Then run commands
+wpchariot <command> [options] [--site sitename]
+# or
+python cli.py <command> [options] [--site sitename]
+```
+
+### Using Python directly (legacy)
 
 ```bash
 python ~/wp_chariot/python/cli.py <command> [options] [--site sitename]
 ```
 
-For brevity in the examples below, we'll use `cli.py` without the full path.
+For brevity in the examples below, we'll use `wpchariot` or `cli.py` without the full path, assuming you're either using `uv run` or have activated the virtual environment.
 
 ## Quick Reference Table
 
@@ -84,12 +111,16 @@ For convenience, you can create shell aliases to simplify common commands:
 
 ```bash
 # Add to your .bashrc or .zshrc
-alias wp-chariot="python ~/wp_chariot/python/cli.py"
+# Using uv run (recommended)
+alias wp-chariot="cd ~/wp_chariot/python && uv run wpchariot"
 alias wp-init="wp-chariot init --with-db --with-media"
 alias wp-sync-files="wp-chariot sync-files"
 alias wp-sync-db="wp-chariot sync-db"
 alias wp-sync-all="wp-chariot sync-all"
 alias wp-media="wp-chariot media-path"
+
+# Or if using activated virtual environment
+# alias wp-chariot="cd ~/wp_chariot/python && source .venv/bin/activate && wpchariot"
 ```
 
 Then use them like:
@@ -119,8 +150,11 @@ python cli.py sync-db --site mystore
 For scheduled synchronization, you can use cron jobs:
 
 ```bash
-# Example cron job for daily database backup
-0 2 * * * cd ~/wp_chariot/python && python cli.py sync-db --direction from-remote --site mystore
+# Example cron job for daily database backup using uv
+0 2 * * * cd ~/wp_chariot/python && uv run wpchariot sync-db --direction from-remote --site mystore
+
+# Or using activated virtual environment
+0 2 * * * cd ~/wp_chariot/python && source .venv/bin/activate && wpchariot sync-db --direction from-remote --site mystore
 ```
 
 For more detailed information on each command, refer to the specific documentation sections:

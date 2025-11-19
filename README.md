@@ -42,7 +42,8 @@ All of this with minimal requirements on both local and server environments, usi
 
 ### Local Machine
 - Unix-based OS (Linux/macOS)
-- Python 3.6 or higher
+- Python 3.8 or higher
+- uv installed ([installation guide](https://docs.astral.sh/uv/getting-started/installation/))
 - DDEV installed
 - SSH access to your remote server
 
@@ -63,7 +64,7 @@ git clone https://github.com/aficiomaquinas/wp_chariot.git ~/wp_chariot
 
 # Set up your environment
 cd ~/wp_chariot/python
-pip install -r requirements.txt
+uv sync
 cp config.example.yaml config.yaml
 cp sites.example.yaml sites.yaml
 
@@ -71,9 +72,25 @@ cp sites.example.yaml sites.yaml
 vim sites.yaml
 
 # Initialize and set up your first site
-python cli.py site --init
+uv run wpchariot site --init
+uv run wpchariot site --add mysite
+uv run wpchariot init --with-db --with-media --site mysite
+```
+
+**Alternative: Activate virtual environment manually**
+
+```bash
+# Create and activate virtual environment
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+uv sync
+
+# Now you can run commands directly
+wpchariot site --init
 python cli.py site --add mysite
-python cli.py init --with-db --with-media --site mysite
+```
 ```
 
 For detailed installation instructions, see the [Installation Guide](docs/installation.md).
