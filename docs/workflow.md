@@ -50,11 +50,12 @@ Before you begin working with a site, you need to set up wp_chariot and configur
 # Clone wp_chariot (if not already done)
 git clone https://github.com/aficiomaquinas/wp_chariot.git ~/wp_chariot
 cd ~/wp_chariot/python
-pip install -r requirements.txt
+uv sync
+source .venv/bin/activate  # Activate virtual environment
 
 # Set up site configuration
-python cli.py site --init
-python cli.py site --add mysite
+wpchariot site --init
+wpchariot site --add mysite
 ```
 
 Edit `sites.yaml` to configure your site with the appropriate connection details, paths, and other settings.
@@ -65,7 +66,7 @@ When you're ready to work on a site, initialize the local development environmen
 
 ```bash
 # One command to do everything
-python ~/wp_chariot/python/cli.py init --with-db --with-media --site mysite
+wpchariot init --with-db --with-media --site mysite
 ```
 
 This single command:
@@ -86,7 +87,7 @@ When working with third-party code (code you didn't write and maintain elsewhere
 
 ```bash
 # Register a file to be patched
-python ~/wp_chariot/python/cli.py patch --add wp-content/plugins/some-plugin/file-to-modify.php --site mysite --description "Fix critical issue"
+wpchariot patch --add wp-content/plugins/some-plugin/file-to-modify.php --site mysite --description "Fix critical issue"
 
 # Make your changes to the file locally and test them
 ```
@@ -97,10 +98,10 @@ Test your changes thoroughly in your local environment. DDEV provides a full loc
 
 ```bash
 # View differences between local and production
-python ~/wp_chariot/python/cli.py diff --site mysite
+wpchariot diff --site mysite
 
 # View only patch-related differences
-python ~/wp_chariot/python/cli.py diff --patches --site mysite
+wpchariot diff --patches --site mysite
 ```
 
 ### 5. Applying Changes to Production
@@ -110,13 +111,13 @@ Once you've tested your changes and are satisfied with them, apply them to produ
 For third-party code patches:
 ```bash
 # Apply registered patches to production
-python ~/wp_chariot/python/cli.py patch-commit --site mysite
+wpchariot patch-commit --site mysite
 ```
 
 For custom code that you maintain (not using the patch system):
 ```bash
 # Synchronize specific files back to production (USE WITH CAUTION)
-python ~/wp_chariot/python/cli.py sync-files --direction to-remote --site mysite
+wpchariot sync-files --direction to-remote --site mysite
 ```
 
 Note: For custom plugins and themes that you maintain, it's often better to use a dedicated Git repository and CI/CD process instead of wp_chariot's sync-files command.
@@ -127,16 +128,16 @@ As your production site evolves (new plugins, updates, content changes), you can
 
 ```bash
 # Update files from production
-python ~/wp_chariot/python/cli.py sync-files --site mysite
+wpchariot sync-files --site mysite
 
 # Update database from production
-python ~/wp_chariot/python/cli.py sync-db --site mysite
+wpchariot sync-db --site mysite
 
 # Configure media paths (if needed)
-python ~/wp_chariot/python/cli.py media-path --site mysite
+wpchariot media-path --site mysite
 
 # Or use sync-all to do all the above in one command
-python ~/wp_chariot/python/cli.py sync-all --site mysite
+wpchariot sync-all --site mysite
 ```
 
 ## Workflow Variants
@@ -147,13 +148,13 @@ wp_chariot excels at managing multiple WordPress sites:
 
 ```bash
 # Add another site
-python ~/wp_chariot/python/cli.py site --add anothersite
+wpchariot site --add anothersite
 
 # List all sites
-python ~/wp_chariot/python/cli.py site --list
+wpchariot site --list
 
 # Set a default site
-python ~/wp_chariot/python/cli.py site --set-default mysite
+wpchariot site --set-default mysite
 ```
 
 ### CI/CD Integration
@@ -195,12 +196,12 @@ Keep your local environment in sync with production to catch and address potenti
 
 ```bash
 # Regular sync workflow
-python ~/wp_chariot/python/cli.py sync-files --site mysite
-python ~/wp_chariot/python/cli.py sync-db --site mysite
-python ~/wp_chariot/python/cli.py media-path --site mysite
+wpchariot sync-files --site mysite
+wpchariot sync-db --site mysite
+wpchariot media-path --site mysite
 
 # Or use the all-in-one sync command
-python ~/wp_chariot/python/cli.py sync-all --site mysite
+wpchariot sync-all --site mysite
 ```
 
 ### 5. Document Site-Specific Workflows
@@ -214,8 +215,8 @@ For each site, document any special considerations or workflows in a `README.md`
 For ongoing projects, you might want to automate synchronization:
 
 ```bash
-# Add to your crontab
-0 9 * * 1-5 cd ~/wp_chariot/python && python cli.py sync-db --site mysite
+# Add to your crontab (assuming venv is activated in the script)
+0 9 * * 1-5 cd ~/wp_chariot/python && source .venv/bin/activate && wpchariot sync-db --site mysite
 ```
 
 ### Pre-deployment Testing

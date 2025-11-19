@@ -379,7 +379,7 @@ Environment variables are replaced using the format `${VARIABLE_NAME}` or `${VAR
 You can validate your configuration with:
 
 ```bash
-python cli.py check
+wpchariot check
 ```
 
 This command will check the structure and basic values of your configuration and display warnings if there are issues.

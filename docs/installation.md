@@ -68,8 +68,7 @@ uv sync
 
 After activation, you can run commands directly:
 ```bash
-python cli.py check
-wpchariot check  # or wp_chariot check
+wpchariot check
 ```
 
 #### Using uv run (recommended)
@@ -81,9 +80,6 @@ You can also use `uv run` to execute commands without activating the environment
 uv run wpchariot check
 # or
 uv run wp_chariot check
-
-# Run Python scripts
-uv run python cli.py check
 ```
 
 The `uv run` command automatically ensures the environment is up-to-date before executing.
@@ -147,13 +143,9 @@ The user must have permissions to:
 # Check if configuration is valid
 # Using uv run (recommended):
 uv run wpchariot check
-# or
-uv run python cli.py check
 
 # Or using the virtual environment directly:
 source .venv/bin/activate
-python cli.py check
-# or
 wpchariot check
 ```
 
@@ -178,8 +170,6 @@ After installation, ensure everything is properly set up:
    # Verify configuration (using uv)
    cd ~/wp_chariot/python
    uv run wpchariot config --show
-   # or
-   uv run python cli.py config --show
    ```
 
 4. **Database Access**:
@@ -208,13 +198,9 @@ cd ~/wp_chariot/python
 
 # Initialize site system (using uv)
 uv run wpchariot site --init
-# or
-uv run python cli.py site --init
 
 # Add your first site
 uv run wpchariot site --add mysite
-# or
-uv run python cli.py site --add mysite
 ```
 
 Then proceed to the [Workflow Guide](workflow.md) to learn how to use wp_chariot effectively. 

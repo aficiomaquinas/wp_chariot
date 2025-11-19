@@ -143,7 +143,7 @@ When upgrading DDEV:
 
 1. Follow [official upgrade instructions](https://ddev.readthedocs.io/en/stable/users/install/#update-upgrade)
 2. Restart DDEV projects: `ddev restart`
-3. Test with wp_chariot: `python ~/wp_chariot/python/cli.py check`
+3. Test with wp_chariot: `wpchariot check`
 
 ## Troubleshooting Version Conflicts
 

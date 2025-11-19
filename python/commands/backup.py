@@ -77,6 +77,7 @@ def create_full_backup(site_alias: Optional[str] = None, output_dir: Optional[st
         progress_bar = tqdm(total=total_files, unit='files', desc="Compressing")
         
         # Loop through all files and directories
+        skipped_files = []
         for root, _, files in os.walk(local_path):
             # Add files to the ZIP
             for file in files:
@@ -84,17 +85,49 @@ def create_full_backup(site_alias: Optional[str] = None, output_dir: Optional[st
                 # Relative path for the file in the ZIP
                 rel_path = file_path.relative_to(base_path)
                 
-                # Add file to the ZIP
-                zipf.write(file_path, rel_path)
-                file_count += 1
+                try:
+                    # Check if file exists and is accessible
+                    # This handles broken symlinks and missing files
+                    if not file_path.exists():
+                        skipped_files.append(str(rel_path))
+                    # Check if it's a broken symlink
+                    elif file_path.is_symlink():
+                        try:
+                            # Try to resolve the symlink target
+                            target = file_path.resolve(strict=True)
+                            if not target.exists():
+                                skipped_files.append(str(rel_path))
+                        except (OSError, RuntimeError):
+                            # Symlink is broken
+                            skipped_files.append(str(rel_path))
+                    else:
+                        # File exists and is not a broken symlink, try to add it
+                        try:
+                            zipf.write(file_path, rel_path)
+                            file_count += 1
+                        except (OSError, FileNotFoundError, PermissionError):
+                            # Skip files that can't be read (permissions, etc.)
+                            skipped_files.append(str(rel_path))
+                except (OSError, FileNotFoundError, PermissionError):
+                    # Skip files that can't be accessed at all
+                    skipped_files.append(str(rel_path))
                 
-                # Update progress bar
+                # Update progress bar (always update, even for skipped files)
                 progress_bar.update(1)
         
         # Close the progress bar
         progress_bar.close()
     
     print(f"✅ Backup completed: {file_count} files")
+    if skipped_files:
+        print(f"⚠️ Skipped {len(skipped_files)} files (broken symlinks, missing files, or permission errors)")
+        if len(skipped_files) <= 10:
+            for skipped in skipped_files:
+                print(f"   - {skipped}")
+        else:
+            print(f"   (showing first 10 of {len(skipped_files)} skipped files)")
+            for skipped in skipped_files[:10]:
+                print(f"   - {skipped}")
     print(f"📦 ZIP file created: {backup_path}")
     
     # Return the backup path

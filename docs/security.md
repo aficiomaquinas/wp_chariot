@@ -158,10 +158,10 @@ Always review patches before committing them to production:
 
 ```bash
 # Review patch differences
-python ~/wp_chariot/python/cli.py diff --patches --site mysite
+wpchariot diff --patches --site mysite
 
 # Use dry-run to see what would happen
-python ~/wp_chariot/python/cli.py patch-commit --dry-run --site mysite
+wpchariot patch-commit --dry-run --site mysite
 ```
 
 ## Production Safety
@@ -172,7 +172,7 @@ Exercise extreme caution when using `to-remote` operations:
 
 ```bash
 # POTENTIALLY DANGEROUS: overwrites production database
-python ~/wp_chariot/python/cli.py sync-db --direction to-remote --site mysite
+wpchariot sync-db --direction to-remote --site mysite
 ```
 
 Such operations should:

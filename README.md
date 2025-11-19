@@ -89,7 +89,7 @@ uv sync
 
 # Now you can run commands directly
 wpchariot site --init
-python cli.py site --add mysite
+wpchariot site --add mysite
 ```
 ```
 

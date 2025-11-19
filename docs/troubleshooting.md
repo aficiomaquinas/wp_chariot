@@ -159,7 +159,7 @@ This guide provides solutions to common issues you might encounter when using wp
 
 3. Try with dry-run first:
    ```bash
-   python ~/wp_chariot/python/cli.py sync-files --dry-run --site mysite
+   wpchariot sync-files --dry-run --site mysite
    ```
 
 4. If specific files fail, add them to exclusions temporarily
@@ -201,7 +201,7 @@ This guide provides solutions to common issues you might encounter when using wp
 **Solution**:
 1. Verify the patch file exists and is registered:
    ```bash
-   python ~/wp_chariot/python/cli.py patch --list --site mysite
+   wpchariot patch --list --site mysite
    ```
 
 2. Check file permissions on remote:
@@ -211,12 +211,12 @@ This guide provides solutions to common issues you might encounter when using wp
 
 3. Try dry-run first:
    ```bash
-   python ~/wp_chariot/python/cli.py patch-commit --dry-run --site mysite
+   wpchariot patch-commit --dry-run --site mysite
    ```
 
 4. If the file was modified on remote, use force:
    ```bash
-   python ~/wp_chariot/python/cli.py patch-commit --force --site mysite
+   wpchariot patch-commit --force --site mysite
    ```
 
 ### Backup Files Missing
@@ -356,9 +356,9 @@ This guide provides solutions to common issues you might encounter when using wp
    chmod +x cli.py
    ```
 
-3. Use absolute paths:
+3. Use absolute paths (if needed):
    ```bash
-   python /absolute/path/to/wp_chariot/python/cli.py command
+   cd /absolute/path/to/wp_chariot/python && source .venv/bin/activate && wpchariot command
    ```
 
 ### Permission Denied
@@ -378,14 +378,15 @@ This guide provides solutions to common issues you might encounter when using wp
 
 3. Check for sudo requirements (ideally not needed):
    ```bash
-   sudo python ~/wp_chariot/python/cli.py command
+   # Note: Using sudo with wpchariot is not recommended
+   # Ensure proper permissions instead
    ```
 
 ## General Troubleshooting Steps
 
 1. **Enable verbose output** when available:
    ```bash
-   python ~/wp_chariot/python/cli.py command --verbose
+   wpchariot command --verbose
    ```
 
 2. **Check log files** for detailed error messages:
@@ -395,12 +396,12 @@ This guide provides solutions to common issues you might encounter when using wp
 
 3. **Use dry-run mode** when available to test without making changes:
    ```bash
-   python ~/wp_chariot/python/cli.py command --dry-run
+   wpchariot command --dry-run
    ```
 
 4. **Verify system requirements**:
    ```bash
-   python ~/wp_chariot/python/cli.py check
+   wpchariot check
    ```
 
 5. **Update wp_chariot** to the latest version:
