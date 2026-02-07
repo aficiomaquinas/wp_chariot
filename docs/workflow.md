@@ -177,9 +177,19 @@ exclusions:
   wordfence: wp-content/plugins/wordfence/
   akismet: wp-content/plugins/akismet/
   jetpack: wp-content/plugins/jetpack/
+  # Critical for desproductionalization: Omit Email/SMTP plugins and Payment Gateways
+  wp-ses: wp-content/plugins/wp-ses/
+  stripe: wp-content/plugins/stripe-for-woocommerce/
   # We ONLY keep our business logic:
   # my-custom-plugin: wp-content/plugins/my-agency-plugin/
 ```
+
+#### The Email & Payments consideration
+A key part of why this "declarative" approach works so well is that it encourages **offloading services**. 
+- **Email**: By using plugins like Amazon SES or SendGrid and **excluding them** from synchronization, you ensure that your local or staging environment doesn't have the "credentials" or the "machinery" to accidentally send emails to real customers.
+- **Payments**: Similarly, by excluding payment gateway plugins, you physically remove the possibility of processing real transactions in a development environment.
+
+If you need more complex logic, since `wp_chariot` is a CLI tool, you can always wrap it in external scripts, but keeping the core "desprod" logic in the sync layer via exclusions makes the process robust and predictable.
 
 Since `sites.yaml` is designed to handle different environments cleanly, you can clone a site entry to manage this:
 
