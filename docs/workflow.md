@@ -140,7 +140,73 @@ wpchariot media-path --site mysite
 wpchariot sync-all --site mysite
 ```
 
+### 7. Advanced Inspections (Best Practice)
+
+Before performing a synchronization from remote (especially on sites with many changes), it is highly recommended to inspect exactly what will be downloaded. This can prevent surprises and allow you to adjust exclusions if needed.
+
+Use the `diff` command with the `--all` flag and redirect the output to a log file for detailed review:
+
+```bash
+# Generate a complete diff report
+wpchariot diff --all --site mysite > logs/diff_mysite.txt
+```
+
+You can then open `logs/diff_mysite.txt` to inspect:
+- **📥 New files**: Files that exist on the server but not locally.
+- **🔄 Modified files**: Local files that differ from the server version.
+- **🗑️ Files to delete**: Local files that don't exist on the server (and are not in the exclusions list).
+
+This is especially useful before running `sync-all` or `sync-files`.
+
 ## Workflow Variants
+
+### Staging Sync Workflow (Desproductionalized)
+
+A common use case is using your local development environment to update a "staging" or "test" server that should remain "desproductionalized" (without production cache, production URLs, etc.).
+
+Since `sites.yaml` is designed to handle different environments cleanly, you can clone a site entry to manage this:
+
+1. **Source Site**: Your usual production site (e.g., `mysite`).
+2. **Staging Site**: A cloned entry in `sites.yaml` (e.g., `mysite-staging`) that uses the **same** `local_path` but a different `remote_host` and `remote_path`.
+
+Example `sites.yaml`:
+```yaml
+sites:
+  mysite:
+    ssh:
+      remote_host: production-server
+      local_path: /path/to/local/app/
+    # ... rest of prod config
+  mysite-staging:
+    ssh:
+      remote_host: staging-server # NEW server
+      local_path: /path/to/local/app/ # SAME local path
+    # ... rest of staging config
+```
+
+**Workflow Steps:**
+1. Pull from production: `wpchariot sync-all --direction from-remote --site mysite`
+2. Perform local adjustments if needed.
+3. Push to staging: `wpchariot sync-all --direction to-remote --site mysite-staging`
+
+This allows you to verify changes on a remote server that mirrors your "desproductionalized" local environment before finally touching production.
+
+### Live-to-Live Migration Workflow (Full Sync)
+
+For migrating a site from one live server to another, you can expand this strategy into a 4-site configuration. This handles both the development-focused "desproductionalized" syncs and the full "production-ready" migrations.
+
+**The 4-Site Strategy:**
+1. **Prod-Desprod**: Your standard workflow site (pull from Production, desproductionalized).
+2. **Staging-Desprod**: Used to push to a staging server for testing (desproductionalized).
+3. **Source-Full**: A site entry with **no exclusions** (except absolute essentials) and **no media-path redirection**. Used to pull a 1:1 copy from the source live server.
+4. **Target-Full**: Similar to Source-Full, but pointing to the new target server. Used to push the 1:1 copy.
+
+**Migration Steps:**
+1. Pull EVERYTHING from the old server: `wpchariot sync-all --direction from-remote --site source-full`
+2. Local verification (DDEV might be slow with many files/media, but it ensures you have everything).
+3. Push EVERYTHING to the new server: `wpchariot sync-all --direction to-remote --site target-full`
+
+This ensures that hard-to-track dependencies (like specific plugin settings, heavy uploads, or non-standard paths) are preserved exactly as they are in production without the "desproductionalized" layer interfering with the final migration.
 
 ### Working with Multiple Sites
 

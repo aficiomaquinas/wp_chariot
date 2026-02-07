@@ -1,6 +1,7 @@
 config.yaml
 sites.yaml
 python/patches-*.lock.json
+logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
