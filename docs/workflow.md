@@ -162,7 +162,24 @@ This is especially useful before running `sync-all` or `sync-files`.
 
 ### Staging Sync Workflow (Desproductionalized)
 
-A common use case is using your local development environment to update a "staging" or "test" server that should remain "desproductionalized" (without production cache, production URLs, etc.).
+A common use case is using your local development environment to update a "staging" or "test" server that should remain "desproductionalized". 
+
+While `wp_chariot` doesn't use active entrypoint scripts for this, we achieve a "clean" environment by **strategic synchronization exclusions**. Since most of our business logic resides in custom plugins or themes, we can safely omit production-heavy or side-effect-prone third-party plugins.
+
+#### How it works (The "Sync-based" Desproductionalization)
+Instead of running a "desprod" script, we simply **never synchronize** certain folders. By excluding cache plugins, security WAFs, and tracking tools, the target environment (local or staging) never "sees" the production complexity.
+
+**Common Exclusions Example:**
+```yaml
+exclusions:
+  cache: wp-content/cache/
+  litespeed: wp-content/plugins/litespeed-cache/
+  wordfence: wp-content/plugins/wordfence/
+  akismet: wp-content/plugins/akismet/
+  jetpack: wp-content/plugins/jetpack/
+  # We ONLY keep our business logic:
+  # my-custom-plugin: wp-content/plugins/my-agency-plugin/
+```
 
 Since `sites.yaml` is designed to handle different environments cleanly, you can clone a site entry to manage this:
 
@@ -176,20 +193,20 @@ sites:
     ssh:
       remote_host: production-server
       local_path: /path/to/local/app/
-    # ... rest of prod config
+    # ... rest of prod config (includes exclusions)
   mysite-staging:
     ssh:
       remote_host: staging-server # NEW server
       local_path: /path/to/local/app/ # SAME local path
-    # ... rest of staging config
+    # ... staging config (reuses SAME exclusions)
 ```
 
 **Workflow Steps:**
-1. Pull from production: `wpchariot sync-all --direction from-remote --site mysite`
-2. Perform local adjustments if needed.
-3. Push to staging: `wpchariot sync-all --direction to-remote --site mysite-staging`
+1. **Pull from production**: `wpchariot sync-all --direction from-remote --site mysite`. This brings down content and DB but **skips** the production-only plugins listed in `exclusions`.
+2. **Perform local adjustments**: If needed, test your custom code.
+3. **Push to staging**: `wpchariot sync-all --direction to-remote --site mysite-staging`. This uploads your "clean" local environment to the staging server.
 
-This allows you to verify changes on a remote server that mirrors your "desproductionalized" local environment before finally touching production.
+The result is a staging server that mirrors production data but remains lightweight and "safe" for testing without side effects like sending production emails or triggering external WAFs.
 
 ### Live-to-Live Migration Workflow (Full Sync)
 
