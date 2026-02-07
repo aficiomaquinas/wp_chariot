@@ -6,7 +6,7 @@
 
 > Spin up idempotent WordPress dev environments with one click. Synchronize bidirectionally between local and production. Only requires SSH on your server and DDEV/Python on your local machine. Designed to save time for freelancers and small agencies working with WordPress.
 
-**PRE-RELEASE: Don't use on important production sites until it gets tested by more people.**
+**BETA: Mostly tested, but use with caution on important production sites until it gets tested by more people.**
 
 ## Table of Contents
 - [Overview](#overview)
@@ -90,7 +90,6 @@ uv sync
 # Now you can run commands directly
 wpchariot site --init
 wpchariot site --add mysite
-```
 ```
 
 For detailed installation instructions, see the [Installation Guide](docs/installation.md).
