@@ -225,12 +225,15 @@ For migrating a site from one live server to another, you can expand this strate
 **The 4-Site Strategy:**
 1. **Prod-Desprod**: Your standard workflow site (pull from Production, desproductionalized).
 2. **Staging-Desprod**: Used to push to a staging server for testing (desproductionalized).
-3. **Source-Full**: A site entry with **no exclusions** (except absolute essentials) and **no media-path redirection**. Used to pull a 1:1 copy from the source live server.
-4. **Target-Full**: Similar to Source-Full, but pointing to the new target server. Used to push the 1:1 copy.
+3. **Source-Full**: A site entry with **no exclusions** and **no media-path redirection**. 
+4. **Target-Full**: pointing to the new target server for pushing the 1:1 copy.
+
+> [!IMPORTANT]
+> **Isolation is Key**: Use a different `local_path` for your "Full" site entries (e.g., `.../mysite-full/`). This prevents your clean development environment (which avoids media and cache) from being mixed with the gigabytes of production assets and temporary files required for a 1:1 migration.
 
 **Migration Steps:**
 1. Pull EVERYTHING from the old server: `wpchariot sync-all --direction from-remote --site source-full`
-2. Local verification (DDEV might be slow with many files/media, but it ensures you have everything).
+2. Local verification (optional, ensures you have the complete bundle).
 3. Push EVERYTHING to the new server: `wpchariot sync-all --direction to-remote --site target-full`
 
 This ensures that hard-to-track dependencies (like specific plugin settings, heavy uploads, or non-standard paths) are preserved exactly as they are in production without the "desproductionalized" layer interfering with the final migration.
