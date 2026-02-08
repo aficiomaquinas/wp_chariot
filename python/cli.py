@@ -31,16 +31,27 @@ site_option = click.option(
     help="Site alias to operate on (if multiple are configured)"
 )
 
+# Define a common option for confirmation
+yes_option = click.option(
+    "--yes", "-y", 
+    is_flag=True, 
+    help="Confirm automatically (skip confirmation prompts)"
+)
+
 # Main command group
 @click.group()
 @click.version_option("0.1.0")
-def cli():
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
+@click.pass_context
+def cli(ctx, yes):
     """
     Deployment tools for WordPress.
     
     This set of commands facilitates the development, synchronization
     and deployment of WordPress sites between environments.
     """
+    ctx.ensure_object(dict)
+    ctx.obj['yes'] = yes
     pass
 
 @cli.command("diff")
@@ -71,7 +82,9 @@ def diff_command(all, verbose, patches, site):
 @click.option("--patch-exclusions", type=click.Choice(['default', 'disabled', 'local-only', 'remote-only', 'both-ways']), 
               default='default', help="Method of excluding registered patches: 'default' uses global configuration, 'disabled' doesn't exclude patches")
 @site_option
-def sync_files_command(dry_run, direction, clean, skip_backup, patch_exclusions, site):
+@yes_option
+@click.pass_context
+def sync_files_command(ctx, dry_run, direction, clean, skip_backup, patch_exclusions, site, yes):
     """
     Synchronizes files between the remote server and the local environment.
     
@@ -94,6 +107,9 @@ def sync_files_command(dry_run, direction, clean, skip_backup, patch_exclusions,
     To configure media paths, use the dedicated 'media-path' command or 'sync-all'
     command which includes media path configuration.
     """
+    # Use yes from command option or from global group
+    auto_confirm = yes or ctx.obj.get('yes', False)
+    
     # Select site if necessary
     config = get_yaml_config()
     if not config.select_site(site):
@@ -111,7 +127,7 @@ def sync_files_command(dry_run, direction, clean, skip_backup, patch_exclusions,
         config.config["patches"]["exclusions_mode"] = patch_exclusions
     
     # Execute synchronization
-    success = sync_files(direction=direction, dry_run=dry_run, clean=clean, skip_full_backup=skip_backup)
+    success = sync_files(direction=direction, dry_run=dry_run, clean=clean, skip_full_backup=skip_backup, auto_confirm=auto_confirm)
     
     # Restore the original configuration if it was modified
     if original_exclusions_mode is not None:
@@ -126,16 +142,21 @@ def sync_files_command(dry_run, direction, clean, skip_backup, patch_exclusions,
               default='from-remote', help="Direction of synchronization")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
 @site_option
-def sync_db_command(dry_run, direction, verbose, site):
+@yes_option
+@click.pass_context
+def sync_db_command(ctx, dry_run, direction, verbose, site, yes):
     """
     Synchronizes the database between the remote server and the local environment.
     """
+    # Use yes from command option or from global group
+    auto_confirm = yes or ctx.obj.get('yes', False)
+    
     # Select site if necessary
     config = get_yaml_config(verbose=verbose)
     if not config.select_site(site):
         sys.exit(1)
         
-    success = sync_database(direction=direction, dry_run=dry_run, verbose=verbose)
+    success = sync_database(direction=direction, dry_run=dry_run, verbose=verbose, auto_confirm=auto_confirm)
     if not success:
         sys.exit(1)
 
@@ -148,7 +169,9 @@ def sync_db_command(dry_run, direction, verbose, site):
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
 @click.option("--skip-media", is_flag=True, help="Skip media path configuration (default: false)")
 @site_option
-def sync_all_command(dry_run, direction, clean, skip_backup, verbose, skip_media, site):
+@yes_option
+@click.pass_context
+def sync_all_command(ctx, dry_run, direction, clean, skip_backup, verbose, skip_media, site, yes):
     """
     Synchronizes both database and files between environments in a single command.
     
@@ -162,6 +185,9 @@ def sync_all_command(dry_run, direction, clean, skip_backup, verbose, skip_media
     - sync-files
     - media-path (only in from-remote direction)
     """
+    # Use yes from command option or from global group
+    auto_confirm = yes or ctx.obj.get('yes', False)
+    
     # Select site if necessary
     config = get_yaml_config(verbose=verbose)
     if not config.select_site(site):
@@ -171,14 +197,14 @@ def sync_all_command(dry_run, direction, clean, skip_backup, verbose, skip_media
     
     # 1. Synchronize database
     print("\n🗄️ Step 1: Synchronizing database")
-    success = sync_database(direction=direction, dry_run=dry_run, verbose=verbose)
+    success = sync_database(direction=direction, dry_run=dry_run, verbose=verbose, auto_confirm=auto_confirm)
     if not success:
         print("❌ Error in database synchronization")
         sys.exit(1)
     
     # 2. Synchronize files
     print("\n📂 Step 2: Synchronizing files")
-    success = sync_files(direction=direction, dry_run=dry_run, clean=clean, skip_full_backup=skip_backup)
+    success = sync_files(direction=direction, dry_run=dry_run, clean=clean, skip_full_backup=skip_backup, auto_confirm=auto_confirm)
     if not success:
         print("❌ Error in file synchronization")
         sys.exit(1)
@@ -332,7 +358,9 @@ def patch_command(file_path, list, add, remove, info, dry_run, description, verb
 @click.option("--force", is_flag=True, help="Force application even with modified or different versions")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
 @site_option
-def patch_commit_command(file_path, dry_run, force, verbose, site):
+@yes_option
+@click.pass_context
+def patch_commit_command(ctx, file_path, dry_run, force, verbose, site, yes):
     """
     Applies registered patches to the remote server.
     
@@ -348,6 +376,9 @@ def patch_commit_command(file_path, dry_run, force, verbose, site):
       patch-commit --dry-run                 # View what changes would be made without applying
       patch-commit --force                   # Force application even with modified
     """
+    # Use yes from command option or from global group
+    auto_confirm = yes or ctx.obj.get('yes', False)
+    
     # Select site if necessary
     config = get_yaml_config(verbose=verbose)
     if not config.select_site(site):
@@ -365,7 +396,7 @@ def patch_commit_command(file_path, dry_run, force, verbose, site):
         sys.exit(1)
     
     # Request explicit confirmation to apply patches
-    if not dry_run and not force:
+    if not dry_run and not force and not auto_confirm:
         if file_path:
             message = f"⚠️ Are you sure you want to apply the patch to '{file_path}'? This action will modify files on the server."
         else:
@@ -377,7 +408,7 @@ def patch_commit_command(file_path, dry_run, force, verbose, site):
             sys.exit(0)
     
     # Apply the patch or patches
-    success = apply_patch(file_path=file_path, dry_run=dry_run, show_details=verbose, force=force)
+    success = apply_patch(file_path=file_path, dry_run=dry_run, show_details=verbose, force=force, auto_confirm=auto_confirm)
     
     if not success:
         sys.exit(1)
@@ -734,7 +765,9 @@ def debug_config_command(verbose, site):
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
 @click.option("--dry-run", is_flag=True, help="Simulate operation without making changes")
 @site_option
-def init_command(with_db, with_media, verbose, dry_run, site):
+@yes_option
+@click.pass_context
+def init_command(ctx, with_db, with_media, verbose, dry_run, site, yes):
     """
     Initializes a complete development environment in a single step.
     
@@ -748,6 +781,9 @@ def init_command(with_db, with_media, verbose, dry_run, site):
     - sync-db (if --with-db)
     - media-path (if --with-media)
     """
+    # Use yes from command option or from global group
+    auto_confirm = yes or ctx.obj.get('yes', False)
+    
     # Select site if necessary
     config = get_yaml_config(verbose=verbose)
     if not config.select_site(site):
@@ -757,7 +793,7 @@ def init_command(with_db, with_media, verbose, dry_run, site):
     
     # 1. Synchronize files
     print("\n📂 Step 1: Synchronization of files")
-    success = sync_files(direction="from-remote", dry_run=dry_run, clean=True)
+    success = sync_files(direction="from-remote", dry_run=dry_run, clean=True, auto_confirm=auto_confirm)
     if not success:
         print("❌ Error in file synchronization")
         sys.exit(1)
@@ -765,7 +801,7 @@ def init_command(with_db, with_media, verbose, dry_run, site):
     # 2. Synchronize database (optional)
     if with_db:
         print("\n🗄️ Step 2: Synchronization of database")
-        success = sync_database(direction="from-remote", dry_run=dry_run, verbose=verbose)
+        success = sync_database(direction="from-remote", dry_run=dry_run, verbose=verbose, auto_confirm=auto_confirm)
         if not success:
             print("❌ Error in database synchronization")
             sys.exit(1)

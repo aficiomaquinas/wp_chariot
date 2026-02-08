@@ -631,7 +631,8 @@ class YAMLConfig:
             
             if key not in current:
                 path_str = ' -> '.join(path[:i+1])
-                raise ValueError(f"Key '{key}' does not exist in path '{path_str}'")
+                site_info = f" for site '{self.current_site}'" if hasattr(self, 'current_site') and self.current_site else ""
+                raise ValueError(f"Key '{key}' does not exist in path '{path_str}'{site_info}")
             
             current = current[key]
         

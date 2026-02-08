@@ -682,13 +682,14 @@ class DatabaseSynchronizer:
             print("✅ Database imported successfully to the remote server")
             return True
 
-    def sync(self, direction: str = "from-remote", dry_run: bool = False) -> bool:
+    def sync(self, direction: str = "from-remote", dry_run: bool = False, auto_confirm: bool = False) -> bool:
         """
         Synchronizes the database between environments
         
         Args:
             direction: Synchronization direction ("from-remote" or "to-remote")
             dry_run: If True, only shows what would be done
+            auto_confirm: If True, skips confirmation prompts
             
         Returns:
             bool: True if the synchronization was successful, False otherwise
@@ -854,14 +855,17 @@ class DatabaseSynchronizer:
                 return True
                 
             # Confirmation
-            print("⚠️ WARNING: You are about to overwrite the production database.")
-            confirm = input("   ¿Are you COMPLETELY SURE to continue? (type 'SI CONFIRMO' to continue): ")
-            
-            if confirm != "SI CONFIRMO":
-                print("❌ Operation cancelled by user.")
-                return False
+            if not auto_confirm:
+                print("⚠️ WARNING: You are about to overwrite the production database.")
+                confirm = input("   ¿Are you COMPLETELY SURE to continue? (type 'yes' to continue): ")
                 
-            print("⚡ Confirmation received. Proceeding with the operation...")
+                if confirm.lower() not in ["yes", "y", "si"]:
+                    print("❌ Operation cancelled by user.")
+                    return False
+                
+                print("⚡ Confirmation received. Proceeding with the operation...")
+            else:
+                print("⚡ Auto-confirm enabled. Proceeding with the operation...")
             
             # 1. Export local database directly
             sql_file = self.export_local_db()
@@ -927,7 +931,7 @@ class DatabaseSynchronizer:
                 
             return success
             
-def sync_database(direction: str = "from-remote", dry_run: bool = False, verbose: bool = False) -> bool:
+def sync_database(direction: str = "from-remote", dry_run: bool = False, verbose: bool = False, auto_confirm: bool = False) -> bool:
     """
     Synchronizes the database between environments
     
@@ -935,9 +939,10 @@ def sync_database(direction: str = "from-remote", dry_run: bool = False, verbose
         direction: Synchronization direction ("from-remote" or "to-remote")
         dry_run: If True, only shows what would be done
         verbose: If True, displays detailed debug messages
+        auto_confirm: If True, skips confirmation prompts
         
     Returns:
         bool: True if the synchronization was successful, False otherwise
     """
     synchronizer = DatabaseSynchronizer(verbose=verbose)
-    return synchronizer.sync(direction=direction, dry_run=dry_run) 
+    return synchronizer.sync(direction=direction, dry_run=dry_run, auto_confirm=auto_confirm)

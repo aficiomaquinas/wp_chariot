@@ -52,10 +52,14 @@ class PatchManager:
     - Site-specific lock files are named as `patches-{sitename}.lock.json`.
     """
     
-    def __init__(self):
+    def __init__(self, auto_confirm: bool = False):
         """
         Initializes the patch manager
+        
+        Args:
+            auto_confirm: If True, skips confirmation prompts
         """
+        self.auto_confirm = auto_confirm
         self.config = get_yaml_config(verbose=False)
         
         # Load configuration following "fail fast" principle
@@ -278,11 +282,14 @@ class PatchManager:
             print("   This operation could affect a production environment.")
             print("   To continue, disable protection in config.yaml or confirm to continue.")
             
-            user_input = input("\nAre you sure you want to continue? (y/N): ")
-            
-            if user_input.lower() not in ["y", "yes"]:
-                print("Operation canceled by user.")
-                return False
+            if not self.auto_confirm:
+                user_input = input("\nAre you sure you want to continue? (y/N): ")
+                
+                if user_input.lower() not in ["y", "yes"]:
+                    print("Operation canceled by user.")
+                    return False
+            else:
+                print("Auto-confirm enabled. Continuing anyway.")
                 
             print("Protection temporarily disabled at user request.\n")
             
@@ -391,10 +398,13 @@ class PatchManager:
                 if original_checksum == local_checksum:
                     print("⚠️ Warning: Local and remote files have the same checksum")
                     print("   It doesn't seem there are modifications to patch.")
-                    confirm = input("   ¿Do you want to continue anyway? (y/n): ")
-                    if confirm.lower() != "y":
-                        print("   Operation canceled.")
-                        return False
+                    if not self.auto_confirm:
+                        confirm = input("   ¿Do you want to continue anyway? (y/n): ")
+                        if confirm.lower() not in ["y", "yes"]:
+                            print("   Operation canceled.")
+                            return False
+                    else:
+                        print("   Auto-confirm enabled. Continuing anyway.")
                 
                 # Download the original file as backup
                 print(f"📥 Downloading original file from server...")
@@ -418,10 +428,13 @@ class PatchManager:
                     print(f"⚠️ Warning: Backup checksum does not match remote")
                     print(f"   Remote checksum: {original_checksum}")
                     print(f"   Backup checksum: {backup_checksum}")
-                    confirm = input("   ¿Do you want to continue anyway? (y/n): ")
-                    if confirm.lower() != "y":
-                        print("   Operation canceled.")
-                        return False
+                    if not self.auto_confirm:
+                        confirm = input("   ¿Do you want to continue anyway? (y/n): ")
+                        if confirm.lower() not in ["y", "yes"]:
+                            print("   Operation canceled.")
+                            return False
+                    else:
+                        print("   Auto-confirm enabled. Continuing anyway.")
                 
                 print(f"✅ Original file saved as: {backup_path.name}")
             else:
@@ -518,10 +531,13 @@ class PatchManager:
         # Check if the patch was already applied
         if self.lock_data["patches"][file_path].get("applied_date"):
             print("⚠️ This patch was already applied to the server.")
-            confirm = input("   ¿Do you want to remove it from the record anyway? (y/n): ")
-            if confirm.lower() != "y":
-                print("   ⏭️ Operation canceled.")
-                return False
+            if not self.auto_confirm:
+                confirm = input("   ¿Do you want to remove it from the record anyway? (y/n): ")
+                if confirm.lower() not in ["y", "yes"]:
+                    print("   ⏭️ Operation canceled.")
+                    return False
+            else:
+                print("   Auto-confirm enabled. Removing from record anyway.")
                 
         # Remove the patch
         del self.lock_data["patches"][file_path]
@@ -863,10 +879,13 @@ class PatchManager:
                 shutil.rmtree(temp_dir)
                 
             # Ask if you want to restore
-            restore = input("   ¿Do you want to restore to previous version? (y/n): ")
-            if restore.lower() != "y":
-                print("   ⏭️ Operation canceled.")
-                return False
+            if not self.auto_confirm:
+                restore = input("   ¿Do you want to restore to previous version? (y/n): ")
+                if restore.lower() not in ["y", "yes"]:
+                    print("   ⏭️ Operation canceled.")
+                    return False
+            else:
+                print("   Auto-confirm enabled. Restoring from backup.")
                 
             # Restore backup
             cmd_restore = f"cp \"{backup_file}\" \"{remote_file}\""
@@ -1178,20 +1197,21 @@ def remove_patch(file_path: str) -> bool:
     manager = PatchManager()
     return manager.remove_patch(file_path)
     
-def apply_patch(file_path: str = None, dry_run: bool = False, show_details: bool = False, force: bool = False) -> bool:
+def apply_patch(file_path: str = None, dry_run: bool = False, show_details: bool = False, force: bool = False, auto_confirm: bool = False) -> bool:
     """
-    Applies one or all patches
+    Applies registered patches to the remote server
     
     Args:
-        file_path: Relative path to the file to patch, or None for all
+        file_path: Relative path to the file to be patched. If None, all are applied.
         dry_run: If True, only shows what would be done
-        show_details: If True, shows additional details of the patch
-        force: If True, applies patches even if versions do not match or the file has changed
+        show_details: If True, shows more information during the process
+        force: If True, applies patches even if versions do not match
+        auto_confirm: If True, skips confirmation prompts
         
     Returns:
-        bool: True if the patch was applied correctly, False otherwise
+        bool: True if all patches were applied correctly
     """
-    manager = PatchManager()
+    manager = PatchManager(auto_confirm=auto_confirm)
     
     if file_path:
         # Apply a single patch

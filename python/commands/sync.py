@@ -609,7 +609,7 @@ class FileSynchronizer:
         print("✅ Finished cleaning excluded files")
         return True
         
-    def sync(self, direction: str = "from-remote", dry_run: bool = False, clean: bool = True) -> bool:
+    def sync(self, direction: str = "from-remote", dry_run: bool = False, clean: bool = True, auto_confirm: bool = False) -> bool:
         """
         Synchronizes files between environments
         
@@ -617,6 +617,7 @@ class FileSynchronizer:
             direction: Direction of synchronization ("from-remote" or "to-remote")
             dry_run: If True, only simulates synchronization without making changes
             clean: If True, verifies excluded files after synchronization
+            auto_confirm: If True, skips confirmation prompts
             
         Returns:
             bool: True if the synchronization was successful, False otherwise
@@ -765,7 +766,7 @@ class FileSynchronizer:
             
         print("✅ Local configuration adjustments completed")
 
-def sync_files(direction: str = "from-remote", dry_run: bool = False, clean: bool = True, skip_full_backup: bool = False) -> bool:
+def sync_files(direction: str = "from-remote", dry_run: bool = False, clean: bool = True, skip_full_backup: bool = False, auto_confirm: bool = False) -> bool:
     """
     Synchronizes files between environments
     
@@ -774,6 +775,7 @@ def sync_files(direction: str = "from-remote", dry_run: bool = False, clean: boo
         dry_run: If True, only simulates synchronization without making changes
         clean: If True, cleans excluded files after synchronization
         skip_full_backup: If True, skips creating a full backup before synchronizing from remote
+        auto_confirm: If True, skips confirmation prompts
         
     Returns:
         bool: True if the synchronization was successful, False otherwise
@@ -792,14 +794,15 @@ def sync_files(direction: str = "from-remote", dry_run: bool = False, clean: boo
             except Exception as e:
                 print(f"❌ ERROR: No se pudo crear el backup completo: {str(e)}")
                 print("⚠️ ADVERTENCIA: Sincronizar sin backup puede causar pérdida de datos.")
-                confirm = input("¿Desea continuar SIN backup? (escriba 'SI' para confirmar): ")
-                if confirm.upper() != "SI":
-                    print("Operación cancelada por el usuario.")
-                    return False
+                if not auto_confirm:
+                    confirm = input("¿Desea continuar SIN backup? (escriba 'yes' para confirmar): ")
+                    if confirm.lower() not in ["yes", "y", "si"]:
+                        print("Operación cancelada por el usuario.")
+                        return False
                 print("Continuando sincronización sin backup bajo su responsabilidad.")
         
         # Ejecutar sincronización
-        return synchronizer.sync(direction=direction, dry_run=dry_run, clean=clean)
+        return synchronizer.sync(direction=direction, dry_run=dry_run, clean=clean, auto_confirm=auto_confirm)
         
     except Exception as e:
         print(f"❌ Error durante la sincronización: {str(e)}")
