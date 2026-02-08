@@ -907,7 +907,11 @@ class DatabaseSynchronizer:
                     )
                     
                     if code != 0:
-                        print(f"   ⚠️ Error: {stderr}")
+                        print(f"❌ CRITICAL ERROR: Database search-replace failed.")
+                        print(f"   Command: wp search-replace {source} {target}")
+                        print(f"   Error details: {stderr}")
+                        print("   Aborting to prevent inconsistent database state.")
+                        return False
                 
                 # Explicitly update key options to ensure the site is accessible
                 # This protects against search-replace failures or source DBs with production URLs
