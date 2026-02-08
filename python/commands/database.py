@@ -788,7 +788,7 @@ class DatabaseSynchronizer:
             for source, target in replacements:
                 print(f"   - Replacing: {source} -> {target}")
                 code, stdout, stderr = run_wp_cli(
-                    ["search-replace", source, target, "--all-tables", "--precise", "--skip-columns=guid"],
+                    ["search-replace", source, target, "--all-tables", "--precise", "--skip-columns=guid", "--skip-plugins", "--skip-themes"],
                     self.local_path.parent,
                     remote=False,
                     use_ddev=True
@@ -899,7 +899,7 @@ class DatabaseSynchronizer:
                 for source, target in replacements:
                     print(f"   - Replacing: {source} -> {target}")
                     code, _, stderr = run_wp_cli(
-                        ["search-replace", source, target, "--all-tables", "--precise", "--skip-columns=guid"],
+                        ["search-replace", source, target, "--all-tables", "--precise", "--skip-columns=guid", "--skip-plugins", "--skip-themes"],
                         path=".",
                         remote=True,
                         remote_host=self.remote_host,
