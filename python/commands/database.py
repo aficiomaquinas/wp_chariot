@@ -909,6 +909,12 @@ class DatabaseSynchronizer:
                     if code != 0:
                         print(f"   ⚠️ Error: {stderr}")
                 
+                # Explicitly update key options to ensure the site is accessible
+                # This protects against search-replace failures or source DBs with production URLs
+                print(f"   - Forcing update of siteurl and home to: {self.remote_url}")
+                run_wp_cli(["option", "update", "siteurl", self.remote_url], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
+                run_wp_cli(["option", "update", "home", self.remote_url], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
+                
                 # Clean transients
                 run_wp_cli(
                     ["transient", "delete", "--all"],
