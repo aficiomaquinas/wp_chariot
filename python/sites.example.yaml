@@ -12,12 +12,12 @@ sites:
   # First site
   mysite1:
     ssh:
-      remote_host: "server1"  # SSH alias in ~/.ssh/config
+      remote_host: "server1" # SSH alias in ~/.ssh/config
       remote_path: "/home/user/webapps/site1/"
       local_path: "/home/user/Projects/site1/app/public/"
 
     security:
-      production_safety: "enabled"  # enabled or disabled
+      production_safety: "enabled" # enabled or disabled
 
     urls:
       remote: "https://site1.com"
@@ -39,12 +39,16 @@ sites:
       base_path: "/var/www/html"
       docroot: "app/public"
 
-
     # You can override specific exclusions for this site
     exclusions:
       custom-plugin: "wp-content/plugins/specific-plugin-site1/"
       # You can also disable some global exclusion
-      akismet: false  # This will synchronize Akismet on this site
+      akismet: false # This will synchronize Akismet on this site
+
+      # Composer exclusions (recommended for Composer-based projects to avoid syncing root vendor)
+      # composer-json: "/composer.json"
+      # composer-lock: "/composer.lock"
+      # composer-vendor: "/vendor/"
 
   # Second site
   mysite2:
@@ -76,4 +80,4 @@ sites:
     # Specific exclusions for this site
     exclusions:
       # Here you can have different exclusions for each site
-      my-theme: "wp-content/themes/my-custom-theme/" 
+      my-theme: "wp-content/themes/my-custom-theme/"
