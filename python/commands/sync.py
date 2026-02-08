@@ -697,13 +697,24 @@ class FileSynchronizer:
             print("🔍 Modo dry-run: No se realizarán cambios reales")
         
         # Ejecutar rsync
+        log_file = None
+        verbose = getattr(self.config, 'verbose', False)
+        
+        if not verbose and not dry_run:
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_dir = self.config.deploy_tools_dir / "logs"
+            log_file = str(log_dir / f"rsync_sync_{direction}_{timestamp}.log")
+            
         success, output = run_rsync(
             source=source,
             dest=dest,
             options=options,
             exclusions=exclusions,
             dry_run=dry_run,
-            capture_output=False  # Let it print directly to the console
+            capture_output=False,  # Let it print (or log)
+            verbose=verbose,
+            log_file=log_file
         )
         
         if not success:

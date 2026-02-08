@@ -217,7 +217,8 @@ def run_rsync(
     dry_run: bool = False,
     ssh_options: str = None,
     capture_output: bool = False,
-    verbose: bool = False
+    verbose: bool = False,
+    log_file: str = None
 ) -> Tuple[bool, str]:
     """
     Executes rsync to synchronize files
@@ -231,6 +232,7 @@ def run_rsync(
         ssh_options: Additional options for SSH
         capture_output: If True, captures the output instead of displaying it
         verbose: If True, shows detailed output in real time
+        log_file: Path to log file to write output to
         
     Returns:
         Tuple[bool, str]: True if the synchronization was successful, False otherwise,
@@ -315,8 +317,22 @@ def run_rsync(
     
     try:
         output = []
+        log_fh = None
         
-        if capture_output and not verbose:
+        # Open log file if provided
+        if log_file:
+            try:
+                # Ensure directory exists
+                log_path = Path(log_file)
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                log_fh = open(log_file, 'w')
+                print(f"📝 Rsync output will be written to: {log_file}")
+                # Write command to log file
+                log_fh.write(f"Command: {cmd_str}\n\n")
+            except Exception as e:
+                print(f"⚠️ Error opening log file '{log_file}': {str(e)}")
+        
+        if capture_output and not verbose and not log_file:
             # Capture output without displaying it in real time
             process = subprocess.run(
                 cmd,
@@ -342,12 +358,26 @@ def run_rsync(
             
             for line in process.stdout:
                 line = line.rstrip()
-                if verbose or not capture_output:
+                
+                # Write to log file if available
+                if log_fh:
+                    log_fh.write(line + "\n")
+                    
+                # Print to stdout based on logic:
+                # 1. If verbose is True -> Print everything
+                # 2. If capture_output is False AND log_file is None -> Print everything (default behavior)
+                # 3. If log_file is present AND verbose is False -> DO NOT PRINT (quiet mode)
+                if verbose or (not capture_output and not log_file):
                     print(line)
+                    
                 output.append(line)
                 
             process.wait()
             return_code = process.returncode
+        
+        # Close log file
+        if log_fh:
+            log_fh.close()
         
         # Clean up temporary file
         if exclude_file:
@@ -361,6 +391,8 @@ def run_rsync(
             return True, "\n".join(output)
         else:
             print(f"❌ Error in synchronization (code {return_code})")
+            if log_file:
+                 print(f"📄 Check the log file for details: {log_file}")
             return False, "\n".join(output)
             
     except Exception as e:
@@ -371,5 +403,10 @@ def run_rsync(
             except:
                 pass
         
+        # Close log file
+        if 'log_fh' in locals() and log_fh:
+            log_fh.close()
+        
         print(f"❌ Error executing rsync: {str(e)}")
-        return False, str(e) 
+        return False, str(e)
+ 
