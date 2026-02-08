@@ -10,10 +10,9 @@ All commands can be executed in several ways:
 
 ```bash
 # Using the entry point (shortest)
-uv run wpchariot <command> [options] [--site sitename]
+uv run wpchariot <command> [options] [--site sitename] [--yes]
 # or
-uv run wp_chariot <command> [options] [--site sitename]
-
+uv run wp_chariot <command> [options] [--site sitename] [--yes]
 ```
 
 ### Using activated virtual environment
@@ -61,10 +60,10 @@ Commands for synchronizing files and databases between environments.
 
 | Command | Description | Options | Example |
 |---------|-------------|---------|---------|
-| `init` | Initialize complete environment | `--with-db`: Include database sync<br>`--with-media`: Configure media paths<br>`--site <n>`: Specify site | `wpchariot init --with-db --with-media --site mystore` |
-| `sync-files` | Synchronize files | `--direction`: `from-remote` (default) or `to-remote`<br>`--dry-run`: Simulate without changes<br>`--clean/--no-clean`: Clean excluded files<br>`--skip-backup`: Skip full backup<br>`--site <n>`: Specify site | `wpchariot sync-files --site mystore` |
-| `sync-db` | Synchronize database | `--direction`: `from-remote` (default) or `to-remote` (dangerous)<br>`--dry-run`: Simulate without changes<br>`--site <n>`: Specify site | `wpchariot sync-db --site mystore` |
-| `sync-all` | Synchronize database, files, and configure media path | `--direction`: `from-remote` (default) or `to-remote`<br>`--dry-run`: Simulate without changes<br>`--clean/--no-clean`: Clean excluded files<br>`--skip-backup`: Skip full backup<br>`--skip-media`: Skip media path configuration<br>`--site <n>`: Specify site | `wpchariot sync-all --site mystore` |
+| `init` | Initialize complete environment | `--with-db`: Include database sync<br>`--with-media`: Configure media paths<br>`--site <n>`: Specify site<br>`--yes`: Auto-confirm | `wpchariot init --with-db --with-media --site mystore --yes` |
+| `sync-files` | Synchronize files | `--direction`: `from-remote` (default) or `to-remote`<br>`--dry-run`: Simulate without changes<br>`--clean/--no-clean`: Clean excluded files<br>`--skip-backup`: Skip full backup<br>`--site <n>`: Specify site<br>`--yes`: Auto-confirm | `wpchariot sync-files --site mystore --yes` |
+| `sync-db` | Synchronize database | `--direction`: `from-remote` (default) or `to-remote` (dangerous)<br>`--dry-run`: Simulate without changes<br>`--site <n>`: Specify site<br>`--yes`: Auto-confirm | `wpchariot sync-db --site mystore --yes` |
+| `sync-all` | Synchronize database, files, and configure media path | `--direction`: `from-remote` (default) or `to-remote`<br>`--dry-run`: Simulate without changes<br>`--clean/--no-clean`: Clean excluded files<br>`--skip-backup`: Skip full backup<br>`--skip-media`: Skip media path configuration<br>`--site <n>`: Specify site<br>`--yes`: Auto-confirm | `wpchariot sync-all --site mystore --yes` |
 
 ## Patch Management Commands
 
@@ -76,8 +75,8 @@ Commands for managing patches to third-party code.
 | `patch --add <file>` | Register a new patch | `--description <text>`: Add description<br>`--site <name>`: For specific site | `wpchariot patch --add wp-content/plugins/woocommerce/file.php --description "Fix issue" --site mystore` |
 | `patch --info <file>` | View patch details | `--site <name>`: For specific site | `wpchariot patch --info wp-content/plugins/woocommerce/file.php --site mystore` |
 | `patch --remove <file>` | Remove patch from registry | `--site <name>`: For specific site | `wpchariot patch --remove wp-content/plugins/woocommerce/file.php --site mystore` |
-| `patch-commit [file]` | Apply patches to remote | `--dry-run`: Simulate without changes<br>`--force`: Force application<br>`--site <name>`: For specific site | `wpchariot patch-commit --site mystore` |
-| `rollback <file>` | Revert an applied patch | `--dry-run`: Simulate without changes<br>`--site <name>`: For specific site | `wpchariot rollback wp-content/plugins/woocommerce/file.php --site mystore` |
+| `patch-commit [file]` | Apply patches to remote | `--dry-run`: Simulate without changes<br>`--force`: Force application<br>`--site <name>`: For specific site<br>`--yes`: Auto-confirm | `wpchariot patch-commit --site mystore --yes` |
+| `rollback <file>` | Revert an applied patch | `--dry-run`: Simulate without changes<br>`--site <name>`: For specific site<br>`--yes`: Auto-confirm | `wpchariot rollback wp-content/plugins/woocommerce/file.php --site mystore --yes` |
 
 ## Media Commands
 
