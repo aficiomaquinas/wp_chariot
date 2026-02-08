@@ -114,7 +114,61 @@ wp_chariot has been tested with the following security plugins:
 | Kinsta | Limited | May restrict some operations |
 | WP Engine | Limited | May restrict some operations |
 | Flywheel | Limited | May restrict some operations |
+| WordPress.com | Limited | May restrict some operations |
 
+## Permissions and User Architecture
+
+### Unified User Model (Modern Setup)
+
+`wp_chariot` is designed around a **Unified User Model**, which is considered the "modern" standard for secure and performant WordPress hosting (LEMP/LAMP). 
+
+In this model, the server is configured so that:
+1.  **PHP-FPM** runs its pool as the **specific site user** (e.g., `user:siteuser`, `group:siteuser`), not as a generic `www-data`.
+2.  **SSH and CLI** operations (like synchronization and `wp-cli`) are performed by this **same site user**.
+3.  The **Filesystem** permissions are owner-centric (`0755` for directories, `0644` for files), belonging to that site user.
+
+### Why this is required
+
+This architecture ensures that `wp_chariot` can:
+- Synchronize files via `rsync` without permission errors.
+- Apply and revert patches that modify plugin code.
+- Execute `wp-cli` commands that affect the database and files.
+- Maintain consistent ownership across all operations without needing complex ACLs or `sudo` requirements.
+
+### Non-Supported Architecture: Separate `www-data`
+
+`wp_chariot` does **not support** (or has limited compatibility with) legacy "split-user" architectures where:
+- The web server/PHP runs as `www-data`.
+- The developer connects via SSH as a separate user (e.g., `ubuntu`, `admin`, or a personal user).
+- Files are owned by `www-data` and the SSH user relies on group permissions or `sudo`.
+
+Attempting to use `wp_chariot` in such environments will likely result in:
+- `rsync` errors when trying to overwrite files owned by the web server.
+- Patch application failures.
+- Permission mismatches that break WordPress functionality after synchronization.
+
+### Anti-Pattern: Root-Owned Files
+
+A common issue in misconfigured environments (or legacy automation) is having files within the WordPress `webroot` owned by the `root` user. 
+
+**This is a critical anti-pattern because:**
+1.  `wp_chariot` connects as a specific unprivileged user. If files (like `index.php` or `wp-config.php`) are owned by `root`, the tool will **not** be able to overwrite or patch them.
+2.  Modern WordPress security practices dictate that webroot files should be owned by the user running the PHP process, allowing for automatic updates and proper synchronization without escalating privileges.
+3.  Any file that "belongs to root" inside the deployment path is a failure in the server's provisioning logic and must be corrected (e.g., via `chown -R user:group /path/to/wordpress`) before using `wp_chariot`.
+
+### Recommended Configuration (Ansible/LEMP)
+
+If you are using `tt-wordpress-automation` or a similar Sovereign-compliant stack, the configuration should look like this in your PHP-FPM pool:
+
+```ini
+[site_alias]
+user = service_user
+group = service_group
+listen.owner = service_user
+listen.group = www-data ; Bridge to Nginx
+```
+
+This ensures that the `service_user` (the one you configure in `sites.yaml`) has full authority over the deployment.
 ## Configuration Management Tools
 
 wp_chariot can be used alongside these configuration management tools:
