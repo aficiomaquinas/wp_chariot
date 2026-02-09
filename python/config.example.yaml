@@ -1,6 +1,6 @@
 # Global configuration for WordPress Deploy Tools
 # This is an example file. Copy to config.yaml and customize.
-# 
+#
 # IMPORTANT NOTE: This file contains only global configuration that
 # applies to all sites. For site-specific configuration,
 # use the sites.yaml file.
@@ -12,18 +12,21 @@
 
 # WP-CLI configuration
 wp_cli:
-  memory_limit: "512M"  # PHP memory limit for WP-CLI operations
+  memory_limit: "512M" # PHP memory limit for WP-CLI operations
 
 # Security configuration
 security:
-  production_safety: "enabled"  # Protection against accidentally overwriting production
-  backups: "enabled"  # Always create backups before critical operations
+  production_safety: "enabled" # Protection against accidentally overwriting production
+  backups: "enabled" # Always create backups before critical operations
 
 # Patch and synchronization configuration
 sync:
-  allow_empty_diff: true  # Allow continuing even with empty diff (CURRENTLY IGNORED)
-  allow_deletions: false  # Whether to allow deletions during synchronization (dangerous) (CURRENTLY IGNORED)
-  check_conflicts: true   # Always check for conflicts with local changes (CURRENTLY IGNORED)
+  allow_empty_diff: true # Allow continuing even with empty diff (CURRENTLY IGNORED)
+  allow_deletions: false # Whether to allow deletions during synchronization (dangerous) (CURRENTLY IGNORED)
+  check_conflicts: true # Always check for conflicts with local changes (CURRENTLY IGNORED)
+  allowed_directions: # Restrict synchronization direction (list or string)
+    - "from-remote" # e.g., for Production (Pull Only)
+    - "to-remote" # e.g., for Staging (Push Only)
 
 # Default exclusions (are merged with site-specific exclusions)
 exclusions:
@@ -32,17 +35,17 @@ exclusions:
   cache: "wp-content/cache/*"
   wpsc-cache: "wp-content/wp-super-cache/*"
   w3c: "wp-content/w3tc-cache/*"
-  
+
   # Cache and configuration files
   autoptimize: "wp-content/autoptimize/*"
-  
+
   # Security plugins (to avoid conflicts)
   wordfence: "wp-content/wflogs/*"
-  
+
   # Logs and temporary files
   debug.log: "wp-content/debug.log"
   debug: "wp-content/debug/*"
-  
+
   # Backup files
   backup_files: "**/*.bak"
 
@@ -53,7 +56,6 @@ protected_files:
   - ".gitignore"
   - ".ddev/**/*"
   - "wp-content/plugins/wp-original-media-path/"
-
 # -------------------------------------------------------------------------
 # EXAMPLE SITE CONFIGURATION (for sites.yaml)
 # This is an example of how your sites.yaml should look like
@@ -85,4 +87,4 @@ protected_files:
 #       path: "../media"
 #
 #     ddev:
-#       webroot: "/var/www/html/app/public" 
+#       webroot: "/var/www/html/app/public"

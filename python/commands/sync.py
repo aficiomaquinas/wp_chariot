@@ -622,6 +622,17 @@ class FileSynchronizer:
         Returns:
             bool: True if the synchronization was successful, False otherwise
         """
+        # Check allowed directions
+        allowed_directions = self.config.get("sync", "allowed_directions", default=None)
+        if allowed_directions:
+            if isinstance(allowed_directions, str):
+                allowed_directions = [allowed_directions]
+            
+            if direction not in allowed_directions:
+                print(f"❌ Operation '{direction}' is not allowed for this site.")
+                print(f"   Allowed directions: {', '.join(allowed_directions)}")
+                return False
+
         if direction == "from-remote":
             print(f"🔄 Sincronizando archivos desde servidor remoto al entorno local...")
             print(f"   Origen: {self.remote_host}:{self.remote_path}")

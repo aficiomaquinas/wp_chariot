@@ -698,8 +698,23 @@ class DatabaseSynchronizer:
         Returns:
             bool: True if the synchronization was successful, False otherwise
         """
+        # Check allowed directions
+        sync_config = self.config.get('sync', {}) if self.config else {}
+        allowed_directions = sync_config.get('allowed_directions')
+        
+        if allowed_directions:
+            if isinstance(allowed_directions, str):
+                allowed_directions = [allowed_directions]
+            
+            if direction not in allowed_directions:
+                print(f"❌ Operation '{direction}' is not allowed for this site.")
+                print(f"   Allowed directions: {', '.join(allowed_directions)}")
+                return False
+
         if direction == "from-remote":
             print(f"📥 Synchronizing database from remote server to local environment...")
+            
+            # Check allowed directions (REMOVED - now global)
             
             # Verify connection even in dry-run mode
             if not self.check_remote_connection():
