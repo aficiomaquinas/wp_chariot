@@ -676,8 +676,13 @@ class DatabaseSynchronizer:
                 return False
                 
             # Clean cache
-            print("🧹 Cleaning cache on the remote server...")
+            print("🧹 Cleaning WordPress object cache on the remote server...")
             ssh.execute(f"cd {self.remote_path} && wp cache flush")
+            
+            # Attempt to clean Nginx FastCGI cache (standard path for SporeHarbor)
+            nginx_cache_path = "/var/cache/nginx/wordpress"
+            print(f"🧹 Purging Nginx FastCGI cache in {nginx_cache_path}...")
+            ssh.execute(f"rm -rf {nginx_cache_path}/*")
             
             print("✅ Database imported successfully to the remote server")
             return True
@@ -846,6 +851,13 @@ class DatabaseSynchronizer:
                 print("❌ DDEV is not installed or not in the PATH")
                 return False
                 
+            # NEW: Pre-flight check for disk space
+            # Minimum 2GB free required for safe database import
+            with SSHClient(self.remote_host) as ssh:
+                if not ssh.check_disk_space(self.remote_path, threshold_gb=2):
+                    print("❌ Aborting synchronization due to insufficient disk space on the remote server.")
+                    return False
+                
             # Dry run
             if dry_run:
                 print("🔄 Dry run mode: No real changes will be made")
@@ -872,8 +884,32 @@ class DatabaseSynchronizer:
             if not sql_file:
                 return False
                 
+            # NEW: Plugin Safety - Deactivate problematic plugins before heavy operations
+            maintenance_plugins = self.config.get("wp_cli", "maintenance_plugins", default=["product-blocks-pro"])
+            active_at_start = []
+            
+            with SSHClient(self.remote_host) as ssh:
+                # Detect which maintenance plugins are currently active
+                for plugin in maintenance_plugins:
+                    code, _, _ = ssh.execute(f"cd {self.remote_path} && wp plugin is-active {plugin}")
+                    if code == 0:
+                        active_at_start.append(plugin)
+                
+                # Deactivate them
+                for plugin in active_at_start:
+                    print(f"🛡️ Maintenance: Deactivating {plugin} to prevent OOM during migration...")
+                    ssh.execute(f"cd {self.remote_path} && wp plugin deactivate {plugin}")
+                
             # 2. Import to remote
             success = self.import_to_remote(sql_file)
+            
+            # Reactivate plugins if they were active
+            if active_at_start:
+                with SSHClient(self.remote_host) as ssh:
+                    for plugin in active_at_start:
+                        print(f"🛡️ Maintenance: Reactivating {plugin}...")
+                        ssh.execute(f"cd {self.remote_path} && wp plugin activate {plugin}")
+            
             if not success:
                 return False
                 

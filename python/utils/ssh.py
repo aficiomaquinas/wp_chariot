@@ -173,6 +173,44 @@ class SSHClient:
             print(f"❌ Error uploading file: {str(e)}")
             return False
             
+    def check_disk_space(self, path: str, threshold_gb: int = 2) -> bool:
+        """
+        Checks if there is enough disk space available at the given path
+        
+        Args:
+            path: Path to check
+            threshold_gb: Minimum free space required in GB
+            
+        Returns:
+            bool: True if there is enough space, False otherwise
+        """
+        # Command to get available space in GB for the partition containing the path
+        # Use -BG to force output in GB explicitly
+        cmd = f"df -BG {path} | awk 'NR==2 {{print $4}}' | sed 's/G//'"
+        code, stdout, stderr = self.execute(cmd)
+        
+        if code != 0:
+            print(f"⚠️ Warning: Could not verify available disk space: {stderr}")
+            return True  # Don't block if we can't check
+            
+        try:
+            available_gb = int(stdout.strip())
+            if available_gb < threshold_gb:
+                print(f"❌ CRITICAL ERROR: Not enough disk space on the server.")
+                print(f"   Available: {available_gb} GB")
+                print(f"   Required: {threshold_gb} GB (safety threshold)")
+                return False
+            
+            print(f"✅ Disk space verified: {available_gb} GB available")
+            return True
+        except:
+            # Fallback to a more robust check if the above fails
+            print(f"⚠️ Warning: Parsing complicated output, trying fallback...")
+            cmd = f"df -kh {path} | awk 'NR==2 {{print $4}}'"
+            code, stdout, stderr = self.execute(cmd)
+            print(f"   Note: Available space reported: {stdout.strip()}")
+            return True
+
     def download_file(self, remote_path: str, local_path: Path) -> bool:
         """
         Downloads a file from the remote server

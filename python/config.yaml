@@ -1,0 +1,59 @@
+# Configuración global para WordPress Deploy Tools
+# Este archivo contiene configuración común para todos los sitios
+
+# Ajustes WP-CLI globales
+wp_cli:
+  memory_limit: "512M" # Límite de memoria para PHP en WP-CLI
+  maintenance_plugins:
+    - "product-blocks-pro" # Deactivar durante sync para evitar OOM
+
+# Parámetros de seguridad por defecto
+security:
+  production_safety: "enabled" # Protección contra sobrescritura en producción
+  backups: "enabled" # Crear backups automáticos antes de operaciones peligrosas
+
+# Configuración de parches y sincronización
+patches:
+  exclusions_mode:
+    "local-only" # Cómo manejar parches durante la sincronización:
+    # "local-only": Excluir parches cuando se sincroniza desde remoto a local
+    # "both-ways": Excluir parches en ambas direcciones
+    # "remote-only": Excluir parches cuando se sincroniza desde local a remoto
+    # "disabled": No excluir parches automáticamente
+
+# Exclusiones por defecto (se pueden sobrescribir por sitio)
+exclusions:
+  # Directorios de caché y optimización
+  # cache: "wp-content/cache/"
+  litespeed: "wp-content/litespeed/"
+  # jetpack-waf: "wp-content/jetpack-waf/"
+  # wflogs: "wp-content/wflogs/"
+
+  # # Archivos de caché y configuración
+  # object-cache: "wp-content/object-cache.php"
+
+  # # Plugins de caché y optimización
+  # akismet: "wp-content/plugins/akismet/"
+  # wordfence: "wp-content/plugins/wordfence/"
+  # litespeed-cache: "wp-content/plugins/litespeed-cache/"
+
+  # # Media (por defecto no sincronizar uploads)
+  # default-themes: "wp-content/themes/twenty*"
+  # uploads-by-year: "wp-content/uploads/[0-9][0-9][0-9][0-9]/"
+
+  # # Debug y desarrollo
+  debug-logs: "wp-content/debug.log*"
+
+  # composer-json: "/composer.json"
+  # composer-lock: "/composer.lock"
+  # composer-vendor: "/vendor/"
+
+# Archivos protegidos por defecto
+protected_files:
+  - "wp-config.php"
+  - "wp-config-ddev.php"
+  - ".gitignore"
+  - ".ddev/"
+  # - /composer.json
+  # - /composer.lock
+  # - /vendor/
