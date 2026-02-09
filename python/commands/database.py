@@ -679,10 +679,9 @@ class DatabaseSynchronizer:
             print("🧹 Cleaning WordPress object cache on the remote server...")
             ssh.execute(f"cd {self.remote_path} && wp cache flush")
             
-            # Attempt to clean Nginx FastCGI cache (standard path for SporeHarbor)
-            nginx_cache_path = "/var/cache/nginx/wordpress"
-            print(f"🧹 Purging Nginx FastCGI cache in {nginx_cache_path}...")
-            ssh.execute(f"rm -rf {nginx_cache_path}/*")
+            # Standardized Nginx FastCGI purge via Nginx Helper plugin
+            print("🧹 Purging Nginx FastCGI cache via Nginx Helper...")
+            ssh.execute(f"cd {self.remote_path} && wp nginx-helper purge-all")
             
             print("✅ Database imported successfully to the remote server")
             return True
@@ -884,31 +883,8 @@ class DatabaseSynchronizer:
             if not sql_file:
                 return False
                 
-            # NEW: Plugin Safety - Deactivate problematic plugins before heavy operations
-            maintenance_plugins = self.config.get("wp_cli", "maintenance_plugins", default=["product-blocks-pro"])
-            active_at_start = []
-            
-            with SSHClient(self.remote_host) as ssh:
-                # Detect which maintenance plugins are currently active
-                for plugin in maintenance_plugins:
-                    code, _, _ = ssh.execute(f"cd {self.remote_path} && wp plugin is-active {plugin}")
-                    if code == 0:
-                        active_at_start.append(plugin)
-                
-                # Deactivate them
-                for plugin in active_at_start:
-                    print(f"🛡️ Maintenance: Deactivating {plugin} to prevent OOM during migration...")
-                    ssh.execute(f"cd {self.remote_path} && wp plugin deactivate {plugin}")
-                
             # 2. Import to remote
             success = self.import_to_remote(sql_file)
-            
-            # Reactivate plugins if they were active
-            if active_at_start:
-                with SSHClient(self.remote_host) as ssh:
-                    for plugin in active_at_start:
-                        print(f"🛡️ Maintenance: Reactivating {plugin}...")
-                        ssh.execute(f"cd {self.remote_path} && wp plugin activate {plugin}")
             
             if not success:
                 return False

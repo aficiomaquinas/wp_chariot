@@ -4,8 +4,6 @@
 # Ajustes WP-CLI globales
 wp_cli:
   memory_limit: "512M" # Límite de memoria para PHP en WP-CLI
-  maintenance_plugins:
-    - "product-blocks-pro" # Deactivar durante sync para evitar OOM
 
 # Parámetros de seguridad por defecto
 security:
