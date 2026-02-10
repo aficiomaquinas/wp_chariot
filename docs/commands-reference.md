@@ -1,6 +1,6 @@
-# Command Reference
-
 This document provides a comprehensive reference for all available wp_chariot commands, organized by category.
+
+`wp-chariot` follows the [Trailercito Principle](idempotency-audit.md) (Mechanistic Safety and Idempotency).
 
 ## Command Format
 
@@ -35,6 +35,7 @@ For brevity in the examples below, we'll use `wpchariot` assuming you have activ
 | [Setup](#setup-commands) | `site`, `config`, `check` |
 | [Synchronization](#synchronization-commands) | `sync-files`, `sync-db`, `init`, `sync-all` |
 | [Patch Management](#patch-management-commands) | `patch`, `patch-commit`, `rollback` |
+| [Plugin Management](#plugin-management-commands) | `plugin`, `wp` |
 | [Media](#media-commands) | `media-path` |
 | [Verification](#verification-commands) | `diff` |
 
@@ -60,10 +61,10 @@ Commands for synchronizing files and databases between environments.
 
 | Command | Description | Options | Example |
 |---------|-------------|---------|---------|
-| `init` | Initialize complete environment | `--with-db`: Include database sync<br>`--with-media`: Configure media paths<br>`--site <n>`: Specify site<br>`--yes`: Auto-confirm | `wpchariot init --with-db --with-media --site mystore --yes` |
+| `init` | Initialize complete environment | `--with-db`: Include database sync<br>`--with-infra`: Configure infra and media paths<br>`--site <n>`: Specify site<br>`--yes`: Auto-confirm | `wpchariot init --with-db --with-infra --site mystore --yes` |
 | `sync-files` | Synchronize files | `--direction`: `from-remote` (default) or `to-remote`<br>`--dry-run`: Simulate without changes<br>`--clean/--no-clean`: Clean excluded files<br>`--skip-backup`: Skip full backup<br>`--site <n>`: Specify site<br>`--yes`: Auto-confirm | `wpchariot sync-files --site mystore --yes` |
 | `sync-db` | Synchronize database | `--direction`: `from-remote` (default) or `to-remote` (dangerous)<br>`--dry-run`: Simulate without changes<br>`--site <n>`: Specify site<br>`--yes`: Auto-confirm | `wpchariot sync-db --site mystore --yes` |
-| `sync-all` | Synchronize database, files, and configure media path | `--direction`: `from-remote` (default) or `to-remote`<br>`--dry-run`: Simulate without changes<br>`--clean/--no-clean`: Clean excluded files<br>`--skip-backup`: Skip full backup<br>`--skip-media`: Skip media path configuration<br>`--site <n>`: Specify site<br>`--yes`: Auto-confirm | `wpchariot sync-all --site mystore --yes` |
+| `sync-all` | Synchronize database and files | `--direction`: `from-remote` (default) or `to-remote`<br>`--dry-run`: Simulate without changes<br>`--clean/--no-clean`: Clean excluded files<br>`--skip-backup`: Skip full backup<br>`--with-infra`: Install infrastructure plugins locally<br>`--site <n>`: Specify site<br>`--yes`: Auto-confirm | `wpchariot sync-all --site mystore --yes` |
 
 ## Patch Management Commands
 
@@ -78,13 +79,26 @@ Commands for managing patches to third-party code.
 | `patch-commit [file]` | Apply patches to remote | `--dry-run`: Simulate without changes<br>`--force`: Force application<br>`--site <name>`: For specific site<br>`--yes`: Auto-confirm | `wpchariot patch-commit --site mystore --yes` |
 | `rollback <file>` | Revert an applied patch | `--dry-run`: Simulate without changes<br>`--site <name>`: For specific site<br>`--yes`: Auto-confirm | `wpchariot rollback wp-content/plugins/woocommerce/file.php --site mystore --yes` |
 
-## Media Commands
+---
 
-Commands for media management.
+## Plugin Management Commands
+
+Commands for managing WordPress plugins and themes.
 
 | Command | Description | Options | Example |
 |---------|-------------|---------|---------|
-| `media-path` | Configure media paths using WP Original Media Path plugin | `--remote`: Apply on remote server<br>`--verbose`: Show detailed info<br>`--site <n>`: For specific site | `wpchariot media-path --site mystore` |
+| `plugin list` | List installed plugins | `--remote`: Check remote server | `wpchariot plugin list --site mystore` |
+| `plugin install` | Install a plugin | `--activate`: Activate after install<br>`--remote`: Install on remote | `wpchariot plugin install nginx-helper --activate` |
+| `plugin activate` | Activate a plugin | `--remote`: Activate on remote | `wpchariot plugin activate nginx-helper --remote` |
+| `wp` | Passthrough to WP-CLI | `--remote`: Run on remote server | `wpchariot wp "cache flush" --remote` |
+
+## Media Commands
+
+Specialized tools for media configuration.
+
+| Command | Description | Options | Example |
+|---------|-------------|---------|---------|
+| `media-path` | Configure and activate WP Original Media Path plugin | `--remote`: Apply on remote server<br>`--verbose`: Show detailed info<br>`--site <n>`: For specific site | `wpchariot media-path --site mystore` |
 
 ## Verification Commands
 
@@ -102,7 +116,7 @@ For convenience, you can create shell aliases to simplify common commands:
 # Add to your .bashrc or .zshrc
 # Using uv run (recommended)
 alias wp-chariot="cd ~/wp_chariot/python && uv run wpchariot"
-alias wp-init="wp-chariot init --with-db --with-media"
+alias wp-init="wp-chariot init --with-db --with-infra"
 alias wp-sync-files="wp-chariot sync-files"
 alias wp-sync-db="wp-chariot sync-db"
 alias wp-sync-all="wp-chariot sync-all"

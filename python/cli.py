@@ -24,6 +24,7 @@ from commands.database import sync_database
 from commands.patch import list_patches, apply_patch, rollback_patch, add_patch, remove_patch
 from commands.media import configure_media_path
 from commands.backup import create_full_backup
+from commands.plugin import manage_plugin
 
 # Define a common option for site
 site_option = click.option(
@@ -167,11 +168,11 @@ def sync_db_command(ctx, dry_run, direction, verbose, site, yes):
 @click.option("--clean/--no-clean", default=True, help="Clean excluded files after synchronization")
 @click.option("--skip-backup", is_flag=True, help="Skip creating a full backup before synchronizing from remote")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
-@click.option("--skip-media", is_flag=True, help="Skip media path configuration (default: false)")
+@click.option("--with-infra", is_flag=True, help="Install infrastructure plugins and configure media (default: false)")
 @site_option
 @yes_option
 @click.pass_context
-def sync_all_command(ctx, dry_run, direction, clean, skip_backup, verbose, skip_media, site, yes):
+def sync_all_command(ctx, dry_run, direction, clean, skip_backup, verbose, with_infra, site, yes):
     """
     Synchronizes both database and files between environments in a single command.
     
@@ -209,9 +210,20 @@ def sync_all_command(ctx, dry_run, direction, clean, skip_backup, verbose, skip_
         print("❌ Error in file synchronization")
         sys.exit(1)
     
-    # 3. Configure media path (only in from-remote direction)
-    if not skip_media and direction == 'from-remote' and not dry_run:
-        print("\n🖼️ Step 3: Configuring media paths")
+    # 3. Configure infrastructure (only in from-remote direction)
+    if with_infra and direction == 'from-remote' and not dry_run:
+        print("\n🛠️ Step 3: Preparing Infrastructure Plugins (Local)")
+        # List of essential infrastructure plugins
+        infra_plugins = ["nginx-helper", "redis-cache", "wp-original-media-path"]
+        
+        from commands.plugin import manage_plugin
+        for plugin in infra_plugins:
+            print(f"📦 Ensuring '{plugin}' is installed...")
+            manage_plugin("install", plugin, remote=False, verbose=verbose)
+            # We explicitly DO NOT activate them here to keep the environment clean
+            # until specific configuration (like media-path) is run.
+            
+        print("\n🖼️ Step 4: Configuring media paths (Optional)")
         # Get the configuration
         media_config = config.config.get("media", {})
         expert_mode = media_config.get("expert_mode", False)
@@ -433,6 +445,88 @@ def rollback_command(file_path, dry_run, site):
     success = rollback_patch(file_path=file_path, dry_run=dry_run)
     if not success:
         sys.exit(1)
+
+@cli.group("plugin")
+def plugin_group():
+    """
+    Manages WordPress plugins.
+    
+    This command group allows installing, activating, deactivating,
+    and listing plugins in both local and remote environments.
+    """
+    pass
+
+@plugin_group.command("list")
+@click.option("--remote", is_flag=True, help="List plugins on the remote server")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
+@site_option
+def plugin_list_command(remote, verbose, site):
+    """Lists installed plugins."""
+    config = get_yaml_config(verbose=verbose)
+    if not config.select_site(site):
+        sys.exit(1)
+    
+    from commands.plugin import manage_plugin
+    manage_plugin("list", "", remote=remote, verbose=verbose)
+
+@plugin_group.command("install")
+@click.argument("plugin_slug")
+@click.option("--remote", is_flag=True, help="Install on the remote server")
+@click.option("--activate", is_flag=True, help="Activate the plugin after installation")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
+@site_option
+def plugin_install_command(plugin_slug, remote, activate, verbose, site):
+    """Installs a plugin (by slug or URL)."""
+    config = get_yaml_config(verbose=verbose)
+    if not config.select_site(site):
+        sys.exit(1)
+    
+    from commands.plugin import manage_plugin
+    success = manage_plugin("install", plugin_slug, remote=remote, verbose=verbose)
+    if success and activate:
+        manage_plugin("activate", plugin_slug, remote=remote, verbose=verbose)
+
+@plugin_group.command("activate")
+@click.argument("plugin_slug")
+@click.option("--remote", is_flag=True, help="Activate on the remote server")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
+@site_option
+def plugin_activate_command(plugin_slug, remote, verbose, site):
+    """Activates a plugin."""
+    config = get_yaml_config(verbose=verbose)
+    if not config.select_site(site):
+        sys.exit(1)
+    
+    from commands.plugin import manage_plugin
+    manage_plugin("activate", plugin_slug, remote=remote, verbose=verbose)
+
+@plugin_group.command("deactivate")
+@click.argument("plugin_slug")
+@click.option("--remote", is_flag=True, help="Deactivate on the remote server")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
+@site_option
+def plugin_deactivate_command(plugin_slug, remote, verbose, site):
+    """Deactivates a plugin."""
+    config = get_yaml_config(verbose=verbose)
+    if not config.select_site(site):
+        sys.exit(1)
+    
+    from commands.plugin import manage_plugin
+    manage_plugin("deactivate", plugin_slug, remote=remote, verbose=verbose)
+
+@plugin_group.command("info")
+@click.argument("plugin_slug")
+@click.option("--remote", is_flag=True, help="Get info from the remote server")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
+@site_option
+def plugin_info_command(plugin_slug, remote, verbose, site):
+    """Shows detailed information about a plugin."""
+    config = get_yaml_config(verbose=verbose)
+    if not config.select_site(site):
+        sys.exit(1)
+    
+    from commands.plugin import manage_plugin
+    manage_plugin("info", plugin_slug, remote=remote, verbose=verbose)
     
 @cli.command("config")
 @click.option("--show", is_flag=True, help="Show current configuration")
@@ -491,6 +585,54 @@ def config_command(show, repair, output, verbose, site):
             click.echo(f"❌ Error saving repaired configuration: {str(e)}")
     else:
         click.echo("Usage: wp-deploy config [--show|--repair] [--output ARCHIVO]")
+
+@cli.command("wp")
+@click.argument("wp_args", nargs=-1)
+@click.option("--remote", is_flag=True, help="Execute on the remote server")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed info")
+@site_option
+def wp_command(wp_args, remote, verbose, site):
+    """
+    Passthrough to WP-CLI for the selected site.
+    
+    Allows running any WP-CLI command (e.g., 'wp plugin list', 'wp user list')
+    while automatically handling path and environment context.
+    """
+    config = get_yaml_config(verbose=verbose)
+    if not config.select_site(site):
+        sys.exit(1)
+        
+    from utils.wp_cli import run_wp_cli
+    
+    local_path = Path(config.get("ssh", "local_path"))
+    remote_host = config.get("ssh", "remote_host")
+    remote_path = config.get("ssh", "remote_path")
+    
+    # DDEV context
+    base_path = config.get("ddev", "base_path")
+    docroot = config.get("ddev", "docroot")
+    ddev_wp_path = f"{base_path}/{docroot}" if base_path and docroot else None
+    
+    memory_limit = config.get_wp_memory_limit()
+    
+    code, stdout, stderr = run_wp_cli(
+        list(wp_args), 
+        local_path, 
+        remote, 
+        remote_host, 
+        remote_path, 
+        True, 
+        ddev_wp_path, 
+        memory_limit
+    )
+    
+    if stdout:
+        click.echo(stdout)
+    if stderr:
+        click.echo(stderr, err=True)
+        
+    if code != 0:
+        sys.exit(code)
 
 @cli.command("site")
 @click.option("--list", is_flag=True, help="List configured sites")
@@ -761,25 +903,25 @@ def debug_config_command(verbose, site):
 
 @cli.command("init")
 @click.option("--with-db", is_flag=True, help="Include database synchronization")
-@click.option("--with-media", is_flag=True, help="Configure media URLs")
+@click.option("--with-infra", is_flag=True, help="Install infra plugins and configure media")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
 @click.option("--dry-run", is_flag=True, help="Simulate operation without making changes")
 @site_option
 @yes_option
 @click.pass_context
-def init_command(ctx, with_db, with_media, verbose, dry_run, site, yes):
+def init_command(ctx, with_db, with_infra, verbose, dry_run, site, yes):
     """
     Initializes a complete development environment in a single step.
     
     This command performs the following operations in sequence:
     1. Synchronizes files from the remote server
     2. Optionally synchronizes the database
-    3. Optionally configures media paths
+    3. Optionally configures infrastructure and media paths
     
     It is equivalent to executing the following commands in sequence:
     - sync-files
     - sync-db (if --with-db)
-    - media-path (if --with-media)
+    - media-path (if --with-infra)
     """
     # Use yes from command option or from global group
     auto_confirm = yes or ctx.obj.get('yes', False)
@@ -806,9 +948,17 @@ def init_command(ctx, with_db, with_media, verbose, dry_run, site, yes):
             print("❌ Error in database synchronization")
             sys.exit(1)
     
-    # 3. Configure media paths (optional)
-    if with_media:
-        print("\n🖼️ Step 3: Configure media paths")
+    # 3. Configure infrastructure and media paths (optional)
+    if with_infra:
+        print("\n🛠️ Step 3: Preparing Infrastructure Plugins (Local)")
+        infra_plugins = ["nginx-helper", "redis-cache", "wp-original-media-path"]
+        
+        from commands.plugin import manage_plugin
+        for plugin in infra_plugins:
+            print(f"📦 Ensuring '{plugin}' is installed...")
+            manage_plugin("install", plugin, remote=False, verbose=verbose)
+
+        print("\n🖼️ Step 4: Configure media paths")
         media_config = config.config.get("media", {})
         expert_mode = media_config.get("expert_mode", False)
         

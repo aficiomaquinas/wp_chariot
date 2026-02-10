@@ -28,9 +28,6 @@ from config_yaml import get_yaml_config, get_nested
 MEDIA_PLUGIN = "wp-original-media-path"
 MEDIA_PLUGIN_URL = "https://downloads.wordpress.org/plugin/wp-original-media-path.latest-stable.zip"
 
-# Memory limit for WP-CLI
-WP_CLI_MEMORY_LIMIT = "256M"
-
 def configure_media_path(
     media_url: Optional[str] = None,
     expert_mode: bool = False,
@@ -39,17 +36,10 @@ def configure_media_path(
     verbose: bool = False
 ) -> bool:
     """
-    Configures the media path in WordPress
+    Configures and ACTIVATES the media path management in WordPress.
     
-    Args:
-        media_url: IGNORED - The value from config.yaml is used
-        expert_mode: Indicates if expert mode should be activated (from config.yaml)
-        media_path: IGNORED - The value from config.yaml is used
-        remote: Apply on the remote server instead of locally
-        verbose: Show detailed information
-        
-    Returns:
-        bool: True if the configuration was completed successfully, False otherwise
+    Assumes the plugin should be present (via sync-all/init) but will 
+    install it if missing, then activate and configure it based on sites.yaml.
     """
     # Load configuration
     config = get_yaml_config()
@@ -75,6 +65,13 @@ def configure_media_path(
     if verbose:
         print(f"ℹ️ Using WordPress path: {ddev_wp_path}")
     
+    # Ensure the plugin is activated first
+    from utils.wp_cli import activate_plugin
+    print(f"🔌 Ensuring {MEDIA_PLUGIN} is activated...")
+    if not activate_plugin(MEDIA_PLUGIN, local_path, remote, remote_host, remote_path, True, ddev_wp_path, config.get_wp_memory_limit()):
+        print(f"❌ Error: Could not activate {MEDIA_PLUGIN}")
+        return False
+
     # ALWAYS get values from the configuration
     media_url = get_nested(config, "media", "url", "")
     if not media_url:
@@ -253,7 +250,7 @@ def configure_media_path(
             remote_path,
             True,
             ddev_wp_path,
-            memory_limit=WP_CLI_MEMORY_LIMIT  # Use explicit memory limit
+            memory_limit=config.get_wp_memory_limit()  # Use explicit memory limit
         )
         
         if activate_result:
@@ -284,7 +281,7 @@ def configure_media_path(
             remote_path, 
             True, 
             ddev_wp_path,
-            memory_limit=WP_CLI_MEMORY_LIMIT
+            memory_limit=config.get_wp_memory_limit()
         )
         current_url = stdout.strip() if code == 0 and stdout.strip() else "Not configured"
         
@@ -292,7 +289,6 @@ def configure_media_path(
         if "Failed to set memory limit" in current_url:
             current_url = current_url.split("\n")[-1].strip()
         
-        cmd = ["option", "get", "owmp_path", "--skip-themes", "--skip-plugins"]
         code, stdout, stderr = run_wp_cli(
             cmd, 
             local_path, 
@@ -301,7 +297,7 @@ def configure_media_path(
             remote_path, 
             True, 
             ddev_wp_path,
-            memory_limit=WP_CLI_MEMORY_LIMIT
+            memory_limit=config.get_wp_memory_limit()
         )
         current_path = stdout.strip() if code == 0 and stdout.strip() else "Not configured"
         
@@ -318,7 +314,7 @@ def configure_media_path(
             remote_path, 
             True, 
             ddev_wp_path,
-            memory_limit=WP_CLI_MEMORY_LIMIT
+            memory_limit=config.get_wp_memory_limit()
         )
         current_expert = stdout.strip() if code == 0 and stdout.strip() else "0"
         
@@ -342,7 +338,7 @@ def configure_media_path(
             remote_path,
             True,
             ddev_wp_path,
-            memory_limit=WP_CLI_MEMORY_LIMIT
+            memory_limit=config.get_wp_memory_limit()
         )
     
     # 5. Configure expert mode if requested
@@ -357,7 +353,7 @@ def configure_media_path(
             remote_path,
             True,
             ddev_wp_path,
-            memory_limit=WP_CLI_MEMORY_LIMIT
+            memory_limit=config.get_wp_memory_limit()
         )
         
         if media_path:
@@ -371,7 +367,7 @@ def configure_media_path(
                 remote_path,
                 True,
                 ddev_wp_path,
-                memory_limit=WP_CLI_MEMORY_LIMIT
+                memory_limit=config.get_wp_memory_limit()
             )
     else:
         # Ensure that expert mode is disabled
@@ -384,7 +380,7 @@ def configure_media_path(
             remote_path,
             True,
             ddev_wp_path,
-            memory_limit=WP_CLI_MEMORY_LIMIT
+            memory_limit=config.get_wp_memory_limit()
         )
     
     # 6. Clear cache
@@ -396,7 +392,7 @@ def configure_media_path(
         remote_path,
         True,
         ddev_wp_path,
-        memory_limit=WP_CLI_MEMORY_LIMIT
+        memory_limit=config.get_wp_memory_limit()
     )
     
     # 7. Verify final configuration
@@ -412,7 +408,7 @@ def configure_media_path(
         remote_path, 
         True, 
         ddev_wp_path,
-        memory_limit=WP_CLI_MEMORY_LIMIT
+        memory_limit=config.get_wp_memory_limit()
     )
     final_url = stdout.strip() if code == 0 and stdout.strip() else "Not configured (using default value)"
     
@@ -430,7 +426,7 @@ def configure_media_path(
         remote_path, 
         True, 
         ddev_wp_path,
-        memory_limit=WP_CLI_MEMORY_LIMIT
+        memory_limit=config.get_wp_memory_limit()
     )
     final_path = stdout.strip() if code == 0 and stdout.strip() else "Not configured (using default value)"
     
@@ -448,7 +444,7 @@ def configure_media_path(
         remote_path, 
         True, 
         ddev_wp_path,
-        memory_limit=WP_CLI_MEMORY_LIMIT
+        memory_limit=config.get_wp_memory_limit()
     )
     final_expert = "Enabled" if code == 0 and stdout.strip() == "1" else "Disabled"
     

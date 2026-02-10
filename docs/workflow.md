@@ -75,7 +75,7 @@ When you're ready to work on a site, initialize the local development environmen
 
 ```bash
 # One command to do everything
-wpchariot init --with-db --with-media --site mysite
+wpchariot init --with-db --with-infra --site mysite
 ```
 
 This single command:
@@ -229,70 +229,42 @@ The result is a staging server that mirrors production data but remains lightwei
 
 ### Live-to-Live Migration Workflow (Full Sync)
 
-### Migration & Cloning Strategy (The 4-Site Model)
+For moving servers or Disaster Recovery without desproductionalization.
 
-To manage migrations and staging deployments effectively without polluting your local environments, we use a **2-Folder / 4-Site Strategy** in `sites.yaml`.
+#### The 4-Site Model (Isolation Strategy)
+To manage dev and full migrations without pollution, use separate folders:
+1.  **Dev Layer**: `.../mysite-dev/` (Uses exclusions for speed/safety).
+2.  **Full Layer**: `.../mysite-full/` (Pull EVERYTHING, 1:1 clone).
 
-#### The Layers:
-1.  **Dev Layer (Desproductionalized)**: For coding and testing.
-    *   **Folder**: `.../mysite-dev/`
-    *   **Site 1 (Source)**: `mysite-prod-src` (Pull w/ exclusions).
-    *   **Site 2 (Target)**: `mysite-staging` (Push w/ exclusions).
-2.  **Full Layer (1:1 Clone)**: For moving servers or Disaster Recovery.
-    *   **Folder**: `.../mysite-full/` (Clean folder, NO dev artifacts).
-    *   **Site 3 (Source)**: `mysite-full-src` (Pull EVERYTHING).
-    *   **Site 4 (Target)**: `mysite-full-target` (Push EVERYTHING).
+### Standard Staging/Migration Sequence (The "Trailercito" Path)
 
-> [!IMPORTANT]
-> **Isolation is Key**: Never mix these folders. If you push `mysite-dev` to Production, you might delete critical plugin files because of exclusions!
+This is the deterministic process for both layers. It treats Production as read-only.
 
-#### Enforcing One-Way Workflows (Safety First)
-
-To prevent accidents (like pushing to a Source or pulling from a Target), we can enforce directions in `sites.yaml`:
-
-```yaml
-sites:
-  mysite-prod-src:
-    sync:
-      allowed_directions: [from-remote]  # READ-ONLY (Pull Only)
-      
-  mysite-staging:
-    sync:
-      allowed_directions: [to-remote]    # WRITE-ONLY (Push Only)
+#### 1. Pull from Production ("The Golden Copy")
+```bash
+wpchariot sync-all --direction from-remote --site prod-site --with-infra
 ```
+*   **Goal**: Create a local mirror. `--with-infra` pulls core data and ensures infrastructure plugins are ready.
 
-This ensures that even if you type the wrong command, `wp_chariot` will block the operation.
+#### 2. Provision & Verify Target
+*   **Action**: Provision a fresh environment (SporeHarbor or DDEV).
+*   **Safety Check**: `curl -I https://target.site` (Should be vanilla/empty).
 
-#### Universal Execution Steps (Source -> Local -> Target)
+#### 3. Local Preparation (The Bridge)
+*   **Config**: Update local `wp-config-app.php` with Target-specific constants.
+*   **Guardrails**: Verify Target's `sites.yaml` (Exclusions OFF for infra, `wp-config-app.php` PROTECTED).
 
-These steps apply to **both layers**, just change the `site` name you use.
+#### 4. Push to Target ("The Payload")
+```bash
+wpchariot sync-all --direction to-remote --site staging-site --with-infra --yes
+```
+*   **Reliability**: Handles search-replace and infra-plugin upload.
 
-1.  **Preparation (Source Server)**:
-    *   **Clear Caches**: Empty LiteSpeed/WP Rocket caches to avoid migrating stale files.
-    *   *Note*: Do NOT modify infrastructure plugins on Source if it uses a different stack.
-
-2.  **Pull (Source -> Local)**: 
-    *   `wpchariot sync-all --direction from-remote --site [source-site]`
-    *   **Verify Locally**: Start DDEV. The site works locally because DDEV uses `wp-config-ddev.php` automatically.
-    *   *Note*: You do **NOT** need `wp-config-app.php` locally.
-
-**3. STAGE 3: Local Infra Prep (The Bridge)**
-*   **Goal**: Prepare the payload (Config + Plugins) for the Target.
-*   **Action A (Config)**: Create `wp-config-app.php` in your local project root.
-    *   *Content*: Paste the Target environment constants (Keys, Cache settings).
-    *   *Verify*: Ensure it is **PROTECTED** in `sites.yaml` for both Source and Target.
-*   **Action B (Plugins)**: Install infrastructure plugins locally if they are missing.
-    *   `ddev wp plugin install nginx-helper redis-cache`
-    *   *Why?* If you don't have them locally, `rsync` won't upload them, and Staging won't be able to use them.
-    *   *Verify*: Ensure these plugins are **NOT EXCLUDED** in the Target's configuration in `sites.yaml`.
-
-**4. STAGE 4: Push to Target (Staging/NewProd)**
-*   **Goal**: Upload Everything (Content, DB, Config, and Plugins).
-*   **Action**: `wpchariot sync-all --direction to-remote --site [target-site] --yes`
-*   **Result**: 
-    1.  `wp-config-app.php` uploads (and is protected).
-    2.  `nginx-helper` and `redis-cache` upload.
-    3.  Database overwrites Target DB.
+#### 5. Remote Activation & Validation
+```bash
+wpchariot media-path --remote --site staging-site
+```
+*   **Final Step**: Activates plugins and configures media offloading.
 
 **5. STAGE 5: Post-Migration Flush (Manual & Agnostic)**
 *   **Context**: Staging is a "Quasi-Prod" environment. Its purpose is to test the *real* caching behavior. Therefore, `wp_chariot` does **NOT** auto-flush, to avoid masking configuration issues.
