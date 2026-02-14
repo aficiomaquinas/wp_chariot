@@ -109,7 +109,7 @@ class DatabaseSynchronizer:
             print(f"   - DB Pass: {'*' * len(self.remote_db_pass) if self.remote_db_pass else 'not configured'}")
         else:
             # Display minimal information in normal mode
-            print(f"📋 Configuration: {self.remote_host} → {self.remote_url} ⟷ {self.local_url}")
+            print(f"📋 Scope: [Remote] {self.remote_url} ({self.remote_host}) ⟷ [Local] {self.local_url}")
         
         # Save reference to config for methods that need it
         self.config = {'security': {'backups': 'disabled'}}
