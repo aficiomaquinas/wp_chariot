@@ -49,6 +49,9 @@ class DatabaseSynchronizer:
         self.remote_db_pass = ""
         self.remote_db_host = "localhost"
         self.production_safety = True
+        self.cache_config = {}
+        self.remote_url_clean = ""
+        self.local_url_clean = ""
         
         # Load values from configuration
         if config_obj:
@@ -80,6 +83,9 @@ class DatabaseSynchronizer:
                 self.remote_db_user = db_config.get('user', self.remote_db_user)
                 self.remote_db_pass = db_config.get('password', self.remote_db_pass)
                 self.remote_db_host = db_config.get('host', self.remote_db_host)
+            
+            # Load cache configuration
+            self.cache_config = config.get('cache', {})
         
         # Ensure URLs don't end with /
         if self.remote_url.endswith("/"):
@@ -87,6 +93,10 @@ class DatabaseSynchronizer:
             
         if self.local_url.endswith("/"):
             self.local_url = self.local_url[:-1]
+        
+        # Clean versions without protocol for some replacements
+        self.remote_url_clean = self.remote_url.replace("https://", "").replace("http://", "")
+        self.local_url_clean = self.local_url.replace("https://", "").replace("http://", "")
         
         # Debug to verify what configuration is being loaded (only if verbose is True)
         if self.verbose:
@@ -611,12 +621,70 @@ class DatabaseSynchronizer:
             print(f"❌ Error during import: {str(e)}")
             return False
 
-    def import_to_remote(self, sql_file: str) -> bool:
+    def purge_caches(self, remote: bool = True) -> None:
+        """
+        Purges all configured caches (FastCGI, Redis, Filesystem)
+        """
+        if remote:
+            with SSHClient(self.remote_host) as ssh:
+                # Transients (Always recommended post-sync)
+                print("🧹 Cleaning transients on remote server...")
+                ssh.execute(f"cd {self.remote_path} && wp transient delete --all")
+                
+                if not self.cache_config:
+                    # Legacy fallback
+                    print("🧹 Purging cache (remote default fallback)...")
+                    ssh.execute(f"cd {self.remote_path} && wp cache flush")
+                    ssh.execute(f"cd {self.remote_path} && wp nginx-helper purge-all")
+                    return
+
+                # Redis / Object Cache
+                if self.cache_config.get('redis', {}).get('purge', False):
+                    print("🧹 Purging Redis object cache on remote...")
+                    ssh.execute(f"cd {self.remote_path} && wp cache flush")
+                
+                # FastCGI Cache (Angie/Nginx)
+                fastcgi_cfg = self.cache_config.get('fastcgi', {})
+                if fastcgi_cfg.get('purge', False) and fastcgi_cfg.get('path'):
+                    path = fastcgi_cfg['path']
+                    print(f"🧹 Purging Nginx FastCGI cache on remote: {path}")
+                    # Use find to delete children only, keeps root directory and permissions
+                    ssh.execute(f"find {path} -mindepth 1 -delete")
+                
+                # WordPress Filesystem Cache (wp-content/cache)
+                if self.cache_config.get('wordpress', {}).get('purge', False):
+                    print("🧹 Purging WordPress filesystem cache on remote...")
+                    wp_cache_path = os.path.join(self.remote_path, 'wp-content/cache')
+                    ssh.execute(f"find {wp_cache_path} -mindepth 1 -delete")
+        else:
+            # Local (DDEV)
+            print("🧹 Cleaning transients in local environment...")
+            run_wp_cli(["transient", "delete", "--all"], self.local_path.parent, remote=False, use_ddev=True)
+            
+            # For local, we only purge what is explicitly enabled OR just Redis by default if no config
+            if self.cache_config:
+                if self.cache_config.get('redis', {}).get('purge', False):
+                    print("🧹 Purging local Redis object cache...")
+                    run_wp_cli(["cache", "flush"], self.local_path.parent, remote=False, use_ddev=True)
+                
+                if self.cache_config.get('wordpress', {}).get('purge', False):
+                    print("🧹 Purging local WordPress filesystem cache...")
+                    # Local path handling
+                    local_cache = self.local_path / "wp-content" / "cache"
+                    if local_cache.exists():
+                        shutil.rmtree(local_cache)
+                        local_cache.mkdir(parents=True, exist_ok=True)
+            else:
+                # Default local behavior
+                run_wp_cli(["cache", "flush"], self.local_path.parent, remote=False, use_ddev=True)
+
+    def import_to_remote(self, sql_file: str, is_gzipped: bool = False) -> bool:
         """
         Imports the SQL file to the remote server
         
         Args:
             sql_file: Path to the SQL file to import
+            is_gzipped: True if the SQL file is gzipped, False otherwise
             
         Returns:
             bool: True if the import was successful, False otherwise
@@ -680,16 +748,8 @@ class DatabaseSynchronizer:
                 print(f"❌ Error importing database: {stderr}")
                 return False
                 
-            # 3. Clean cache and transients (Best Practice)
-            print("🧹 Cleaning cache and transients on the remote server...")
-            ssh.execute(f"cd {self.remote_path} && wp transient delete --all")
-            ssh.execute(f"cd {self.remote_path} && wp cache flush")
-            
-            # Standardized Nginx FastCGI purge via Nginx Helper plugin
-            print("🧹 Purging Nginx FastCGI cache via Nginx Helper...")
-            code_purge, _, stderr_purge = ssh.execute(f"cd {self.remote_path} && wp nginx-helper purge-all")
-            if code_purge != 0:
-                print(f"⚠️ Nginx Helper purge failed (likely plugin not installed): {stderr_purge.strip()}")
+            # Initial purge after import (Reset state)
+            self.purge_caches(remote=True)
             
             print("✅ Database imported successfully to the remote server")
             return True
@@ -796,9 +856,7 @@ class DatabaseSynchronizer:
             update_option("home", self.local_url, self.local_path.parent, use_ddev=True)
 
             # Best Practice: Clean transients and flush cache after migration
-            print("🧹 Cleaning transients and flushing cache...")
-            run_wp_cli(["transient", "delete", "--all"], self.local_path.parent, remote=False, use_ddev=True)
-            flush_cache(self.local_path.parent, use_ddev=True)
+            self.purge_caches(remote=False)
             
             print("✅ Database sync (remote -> local) completed")
             
@@ -899,9 +957,7 @@ class DatabaseSynchronizer:
                 run_wp_cli(["option", "update", "home", self.remote_url], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
 
                 # Best Practice: Clean transients and flush cache after migration
-                print("🧹 Cleaning transients and flushing cache...")
-                run_wp_cli(["transient", "delete", "--all"], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
-                run_wp_cli(["cache", "flush"], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
+                self.purge_caches(remote=True)
                 
                 print("✅ Database sync (local -> remote) completed on the server")
             except Exception as e:

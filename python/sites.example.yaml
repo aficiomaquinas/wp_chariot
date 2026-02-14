@@ -23,6 +23,15 @@ sites:
       remote: "https://site1.com"
       local: "https://site1.ddev.site"
 
+    cache:
+      fastcgi:
+        purge: true
+        path: /var/cache/angie/wordpress
+      redis:
+        purge: true
+      wordpress: # wp-content/cache
+        purge: true
+
     database:
       remote:
         name: "site1_db"
