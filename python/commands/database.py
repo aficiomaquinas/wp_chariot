@@ -516,7 +516,12 @@ class DatabaseSynchronizer:
                 return False
             
             # Use a more explicit command with all complete options
-            # to diagnose any error better
+            # 1. Clean state (Best Practice: drop tables before import for idempotency)
+            print("🗑️ Resetting local database (dropping tables)...")
+            run_wp_cli(["db", "reset", "--yes"], self.local_path.parent, remote=False, use_ddev=True)
+
+            # 2. Primary import method
+            print(f"📥 Importing database to DDEV: {os.path.basename(sql_file)}")
             result = subprocess.run(
                 ["ddev", "import-db", "--file", sql_file, "--database", "db"],
                 cwd=self.local_path.parent,
@@ -658,14 +663,14 @@ class DatabaseSynchronizer:
                 print("❌ Error uploading SQL file")
                 return False
                 
-            # Import correctly based on whether it's compressed or not
+            # 1. Prepare database (Drop everything for a clean state)
+            print("🗑️ Resetting remote database (dropping tables)...")
+            ssh.execute(f"cd {self.remote_path} && wp db reset --yes")
+
+            # 2. Import correctly based on whether it's compressed or not
             print("⚙️ Importing database to the remote server...")
-            
-            # Use zcat for compressed files, cat for normal ones
             cat_cmd = "zcat" if is_gzipped else "cat"
             import_cmd = f"cd {self.remote_path} && {cat_cmd} {remote_sql_file} | wp db import -"
-            
-            # Execute import command
             code, stdout, stderr = ssh.execute(import_cmd)
             
             # Delete temporary file
@@ -675,13 +680,16 @@ class DatabaseSynchronizer:
                 print(f"❌ Error importing database: {stderr}")
                 return False
                 
-            # Clean cache
-            print("🧹 Cleaning WordPress object cache on the remote server...")
+            # 3. Clean cache and transients (Best Practice)
+            print("🧹 Cleaning cache and transients on the remote server...")
+            ssh.execute(f"cd {self.remote_path} && wp transient delete --all")
             ssh.execute(f"cd {self.remote_path} && wp cache flush")
             
             # Standardized Nginx FastCGI purge via Nginx Helper plugin
             print("🧹 Purging Nginx FastCGI cache via Nginx Helper...")
-            ssh.execute(f"cd {self.remote_path} && wp nginx-helper purge-all")
+            code_purge, _, stderr_purge = ssh.execute(f"cd {self.remote_path} && wp nginx-helper purge-all")
+            if code_purge != 0:
+                print(f"⚠️ Nginx Helper purge failed (likely plugin not installed): {stderr_purge.strip()}")
             
             print("✅ Database imported successfully to the remote server")
             return True
@@ -768,69 +776,31 @@ class DatabaseSynchronizer:
             print(f"   - Changing: {self.remote_url} -> {self.local_url}")
             
             # Full list of patterns to replace to cover all possible cases
-            replacements = [
-                # URLs with full protocol
-                (self.remote_url, self.local_url),
-                
-                # URLs without protocol (//example.com)
-                (f"//{remote_domain}", f"//{local_domain}"),
-            ]
+            # 3. Replace URLs using wp-cli
+            print(f"🔄 Replacing URLs: {self.remote_url} -> {self.local_url}")
             
-            # If the remote URL uses HTTPS, add HTTP variant to ensure all URLs are replaced
-            if self.remote_url.startswith("https://"):
-                http_remote = self.remote_url.replace("https://", "http://")
-                replacements.append((http_remote, self.local_url))
-            
-            # www and non-www variants
-            # Add www variants if not present
-            if not remote_domain.startswith("www."):
-                www_remote_domain = f"www.{remote_domain}"
-                # With protocol
-                if "://" in self.remote_url:
-                    protocol = self.remote_url.split("://")[0]
-                    www_remote_url = f"{protocol}://{www_remote_domain}"
-                    replacements.append((www_remote_url, self.local_url))
-                # Without protocol
-                replacements.append((f"//{www_remote_domain}", f"//{local_domain}"))
-            # Or non-www variants if present
-            elif remote_domain.startswith("www."):
-                non_www_remote_domain = remote_domain.replace("www.", "")
-                # With protocol
-                if "://" in self.remote_url:
-                    protocol = self.remote_url.split("://")[0]
-                    non_www_remote_url = f"{protocol}://{non_www_remote_domain}"
-                    replacements.append((non_www_remote_url, self.local_url))
-                # Without protocol
-                replacements.append((f"//{non_www_remote_domain}", f"//{local_domain}"))
-            
-            # Execute each replacement
-            for source, target in replacements:
-                print(f"   - Replacing: {source} -> {target}")
-                code, stdout, stderr = run_wp_cli(
-                    ["search-replace", source, target, "--all-tables", "--precise", "--skip-columns=guid", "--skip-plugins", "--skip-themes"],
-                    self.local_path.parent,
-                    remote=False,
-                    use_ddev=True
-                )
-                
-                if code != 0 and self.verbose:
-                    print(f"   - Warning: {stderr}")
-            
-            # Clean transients after replacing URLs
-            print("🧹 Cleaning transients to avoid old references...")
-            code, stdout, stderr = run_wp_cli(
-                ["transient", "delete", "--all"],
-                self.local_path.parent,
-                remote=False,
-                use_ddev=True
+            # Standard search-replace with best practice flags
+            run_wp_cli(
+                ["search-replace", self.remote_url, self.local_url, "--all-tables", "--precise", "--skip-columns=guid"],
+                self.local_path.parent, remote=False, use_ddev=True
             )
             
-            if code != 0 and self.verbose:
-                print(f"   - Warning cleaning transients: {stderr}")
-            else:
-                print("   - Transients cleaned successfully")
+            # Protocol fallback (ensure http/https variants are covered)
+            if self.remote_url.startswith("https://"):
+                http_remote = self.remote_url.replace("https://", "http://")
+                run_wp_cli(["search-replace", http_remote, self.local_url, "--all-tables", "--precise", "--skip-columns=guid"],
+                           self.local_path.parent, remote=False, use_ddev=True)
             
-            print("✅ All URL patterns replaced")
+            # Force update core options for accessibility
+            update_option("siteurl", self.local_url, self.local_path.parent, use_ddev=True)
+            update_option("home", self.local_url, self.local_path.parent, use_ddev=True)
+
+            # Best Practice: Clean transients and flush cache after migration
+            print("🧹 Cleaning transients and flushing cache...")
+            run_wp_cli(["transient", "delete", "--all"], self.local_path.parent, remote=False, use_ddev=True)
+            flush_cache(self.local_path.parent, use_ddev=True)
+            
+            print("✅ Database sync (remote -> local) completed")
             
             # 4. Clean temporary files
             try:
@@ -907,57 +877,35 @@ class DatabaseSynchronizer:
             # 3. Replace URLs on the server
             print(f"🔄 Replacing URLs on the remote server...")
             
-            # Replacement patterns
-            remote_domain = self.remote_url.replace("https://", "").replace("http://", "")
-            local_domain = self.local_url.replace("https://", "").replace("http://", "")
-            
-            replacements = [
-                (self.local_url, self.remote_url),
-                (f"//{local_domain}", f"//{remote_domain}"),
-            ]
-            
-            # Add HTTP variant if the URL uses HTTPS
-            if self.local_url.startswith("https://"):
-                http_local = self.local_url.replace("https://", "http://")
-                replacements.append((http_local, self.remote_url))
+            # 3. Replace URLs using wp-cli on remote server
+            print(f"🔄 Replacing URLs: {self.local_url} -> {self.remote_url}")
             
             try:
-                # Execute replacements on the server
-                for source, target in replacements:
-                    print(f"   - Replacing: {source} -> {target}")
-                    code, _, stderr = run_wp_cli(
-                        ["search-replace", source, target, "--all-tables", "--precise", "--skip-columns=guid", "--skip-plugins", "--skip-themes"],
-                        path=".",
-                        remote=True,
-                        remote_host=self.remote_host,
-                        remote_path=self.remote_path
-                    )
-                    
-                    if code != 0:
-                        print(f"❌ CRITICAL ERROR: Database search-replace failed.")
-                        print(f"   Command: wp search-replace {source} {target}")
-                        print(f"   Error details: {stderr}")
-                        print("   Aborting to prevent inconsistent database state.")
-                        return False
-                
-                # Explicitly update key options to ensure the site is accessible
-                # This protects against search-replace failures or source DBs with production URLs
-                print(f"   - Forcing update of siteurl and home to: {self.remote_url}")
-                run_wp_cli(["option", "update", "siteurl", self.remote_url], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
-                run_wp_cli(["option", "update", "home", self.remote_url], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
-                
-                # Clean transients
+                # Standard search-replace with best practice flags
                 run_wp_cli(
-                    ["transient", "delete", "--all"],
-                    path=".",
-                    remote=True,
-                    remote_host=self.remote_host,
-                    remote_path=self.remote_path
+                    ["search-replace", self.local_url, self.remote_url, "--all-tables", "--precise", "--skip-columns=guid"],
+                    path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path
                 )
                 
-                print("✅ URLs replacement completed on the remote server")
+                # Protocol fallback (ensure http/https variants are covered)
+                if self.local_url.startswith("https://"):
+                    http_local = self.local_url.replace("https://", "http://")
+                    run_wp_cli(["search-replace", http_local, self.remote_url, "--all-tables", "--precise", "--skip-columns=guid"],
+                               path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
+                
+                # Force accessibility options
+                print(f"   - Updating siteurl and home to: {self.remote_url}")
+                run_wp_cli(["option", "update", "siteurl", self.remote_url], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
+                run_wp_cli(["option", "update", "home", self.remote_url], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
+
+                # Best Practice: Clean transients and flush cache after migration
+                print("🧹 Cleaning transients and flushing cache...")
+                run_wp_cli(["transient", "delete", "--all"], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
+                run_wp_cli(["cache", "flush"], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
+                
+                print("✅ Database sync (local -> remote) completed on the server")
             except Exception as e:
-                print(f"❌ Error replacing URLs on remote server: {str(e)}")
+                print(f"❌ Error during remote URL replacement: {str(e)}")
                 return False
             
             # Clean temporary files
