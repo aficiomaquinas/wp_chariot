@@ -25,6 +25,7 @@ from commands.patch import list_patches, apply_patch, rollback_patch, add_patch,
 from commands.media import configure_media_path
 from commands.backup import create_full_backup
 from commands.plugin import manage_plugin
+from commands.cache import install_cache, flush_cache
 
 # Define a common option for site
 site_option = click.option(
@@ -213,15 +214,13 @@ def sync_all_command(ctx, dry_run, direction, clean, skip_backup, verbose, with_
     # 3. Configure infrastructure (only in from-remote direction)
     if with_infra and direction == 'from-remote' and not dry_run:
         print("\n🛠️ Step 3: Preparing Infrastructure Plugins (Local)")
-        # List of essential infrastructure plugins
-        infra_plugins = ["nginx-helper", "redis-cache", "wp-original-media-path"]
         
-        from commands.plugin import manage_plugin
-        for plugin in infra_plugins:
-            print(f"📦 Ensuring '{plugin}' is installed...")
-            manage_plugin("install", plugin, remote=False, verbose=verbose)
-            # We explicitly DO NOT activate them here to keep the environment clean
-            # until specific configuration (like media-path) is run.
+        # Install cache plugins based on config
+        install_cache(remote=False, verbose=verbose)
+        
+        # Ensure media skip plugin is installed (legacy behavior for with-infra)
+        print("📦 Ensuring 'wp-original-media-path' is installed...")
+        manage_plugin("install", "wp-original-media-path", remote=False, verbose=verbose)
             
         print("\n🖼️ Step 4: Configuring media paths (Optional)")
         # Get the configuration
@@ -239,6 +238,11 @@ def sync_all_command(ctx, dry_run, direction, clean, skip_backup, verbose, with_
         
         if not success:
             print("⚠️ Warning: Media path configuration failed, but synchronization was completed")
+            
+    # 4. Final Cache Flush (if configured)
+    if not dry_run:
+        print("\n🧹 Step 5: Flushing cache (if enabled in config)")
+        flush_cache(remote=(direction == 'to-remote'), verbose=verbose)
     
     print("\n✅ Complete synchronization finished successfully")
     print("🌟 Ready to continue working!")
@@ -527,6 +531,40 @@ def plugin_info_command(plugin_slug, remote, verbose, site):
     
     from commands.plugin import manage_plugin
     manage_plugin("info", plugin_slug, remote=remote, verbose=verbose)
+
+@cli.group("cache")
+def cache_group():
+    """
+    Manages WordPress caching.
+    
+    This command group allows installing cache plugins and flushing 
+    caches based on the site configuration in sites.yaml.
+    """
+    pass
+
+@cache_group.command("install")
+@click.option("--remote", is_flag=True, help="Install cache plugins on the remote server")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
+@site_option
+def cache_install_command(remote, verbose, site):
+    """Installs and configures cache plugins based on sites.yaml."""
+    config = get_yaml_config(verbose=verbose)
+    if not config.select_site(site):
+        sys.exit(1)
+    
+    install_cache(remote=remote, verbose=verbose)
+
+@cache_group.command("flush")
+@click.option("--remote", is_flag=True, help="Flush cache on the remote server")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
+@site_option
+def cache_flush_command(remote, verbose, site):
+    """Flushes the WordPress cache if enabled in sites.yaml."""
+    config = get_yaml_config(verbose=verbose)
+    if not config.select_site(site):
+        sys.exit(1)
+    
+    flush_cache(remote=remote, verbose=verbose)
     
 @cli.command("config")
 @click.option("--show", is_flag=True, help="Show current configuration")

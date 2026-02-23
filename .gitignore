@@ -1,3 +1,5 @@
+wp_chariot.code-workspace
+
 config.yaml
 sites.yaml
 python/patches-*.lock.json

@@ -655,7 +655,7 @@ class DatabaseSynchronizer:
                 if self.cache_config.get('wordpress', {}).get('purge', False):
                     print("🧹 Purging WordPress filesystem cache on remote...")
                     wp_cache_path = os.path.join(self.remote_path, 'wp-content/cache')
-                    ssh.execute(f"find {wp_cache_path} -mindepth 1 -delete")
+                    ssh.execute(f"test -d {wp_cache_path} && find {wp_cache_path} -mindepth 1 -delete")
         else:
             # Local (DDEV)
             print("🧹 Cleaning transients in local environment...")

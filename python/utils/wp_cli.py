@@ -140,7 +140,9 @@ def _execute_ssh_command(command: List[str], remote_host: str, remote_path: str,
         
     # Add the memory limit to PHP commands
     php_memory_cmd = f"php -d memory_limit={memory_limit}"
-    ssh_cmd = ["ssh", remote_host, f"cd {remote_path} && {php_memory_cmd} $(which wp) {' '.join(command)}"]
+    # Properly escape each segment of the command
+    escaped_command = " ".join([shlex.quote(arg) for arg in command])
+    ssh_cmd = ["ssh", remote_host, f"cd {remote_path} && {php_memory_cmd} $(which wp) {escaped_command}"]
     
     try:
         result = subprocess.run(
