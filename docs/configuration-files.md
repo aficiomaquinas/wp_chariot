@@ -188,6 +188,18 @@ sites:
       base_path: "/var/www/html"
       docroot: "app/public"
 
+    # Cache configuration (New)
+    cache:
+      fastcgi:
+        enabled: true
+        purge: true
+        path: "/var/cache/angie/wordpress"
+      redis:
+        enabled: true
+        purge: true
+      wordpress:
+        purge: true
+
     # You can override specific exclusions for this site
     exclusions:
       custom-plugin: "wp-content/plugins/specific-plugin-site1/"
@@ -271,7 +283,25 @@ security:
   production_safety: "enabled"  # enabled or disabled
 ```
 
-Overrides the global security configuration for this specific site.
+#### Security (Site-Specific)
+
+```yaml
+security:
+  production_safety: "disabled"  # overrides global setting
+```
+
+Overrides the global security configuration for this specific site. When `disabled`, commands like `sync-files --direction to-remote` or `patch-commit` can run against this target.
+
+#### Sync (Site-Specific)
+
+```yaml
+sync:
+  allowed_directions: [from-remote, to-remote]
+```
+
+| Option | Description | Required |
+|--------|-------------|----------|
+| `allowed_directions` | A list of explicit syncing directions allowed for this site. To enforce READ-ONLY push restrictions, set only `[from-remote]` | No |
 
 #### URLs
 
@@ -307,6 +337,28 @@ database:
 | `host` | Database host, usually "localhost" | Yes |
 
 These credentials are used to access the database on the remote server via SSH.
+
+#### Cache
+
+```yaml
+cache:
+  fastcgi:
+    enabled: true
+    purge: true
+    path: "/var/cache/angie/wordpress"
+  redis:
+    enabled: true
+    purge: true
+  wordpress:
+    purge: true
+```
+
+Configures explicit plugin dependencies and purging flags for site caching.
+
+- `fastcgi`: Driven by `nginx-helper`. Set `path` correctly to support local/remote filesystem purging.
+- `redis`: Configures the `redis-cache` plugin.
+- `wordpress`: Defines standard `wp-content/cache` local folder flushing.
+These options are processed by `wpchariot cache install` and `wpchariot cache flush`.
 
 #### Media
 
@@ -389,6 +441,7 @@ This command will check the structure and basic values of your configuration and
 ### Minimal Configuration
 
 Minimal sites.yaml:
+
 ```yaml
 default: "my-site"
 sites:
@@ -474,4 +527,4 @@ sites:
    - Make sure to use absolute paths
    - Verify paths exist on both systems
 
-For more help, see the [Troubleshooting Guide](troubleshooting.md). 
+For more help, see the [Troubleshooting Guide](troubleshooting.md).
