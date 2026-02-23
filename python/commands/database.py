@@ -18,7 +18,7 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 from config_yaml import get_yaml_config
 from utils.ssh import SSHClient
 from utils.filesystem import ensure_dir_exists, create_backup
-from utils.wp_cli import run_wp_cli
+from utils.wp_cli import run_wp_cli, is_plugin_installed, activate_plugin, install_plugin, get_plugin_status
 
 class DatabaseSynchronizer:
     """
@@ -621,62 +621,166 @@ class DatabaseSynchronizer:
             print(f"❌ Error during import: {str(e)}")
             return False
 
+    def _run_remote_purge_or_fail(self, ssh, cmd: str, description: str):
+        """Helper to run a remote purge command and fail fast if it fails"""
+        print(f"🧹 {description}...")
+        
+        # For find commands, let's count files first for better visibility
+        if "find" in cmd and "-delete" in cmd:
+            # Extract path from cmd: find {path}/ -mindepth 1 -delete
+            try:
+                path_match = re.search(r'find\s+([^\s]+)', cmd)
+                if path_match:
+                    find_path = path_match.group(1)
+                    count_cmd = f"cd {self.remote_path} && find {find_path} -mindepth 1 | wc -l"
+                    _, count_out, _ = ssh.execute(count_cmd)
+                    print(f"   ℹ️ Found {count_out.strip()} items to purge in {find_path}")
+            except Exception:
+                pass
+
+        code, stdout, stderr = ssh.execute(f"cd {self.remote_path} && {cmd}")
+        
+        if code != 0:
+            print(f"❌ FAILED: {description}")
+            print(f"   Command: {cmd}")
+            print(f"   Exit code: {code}")
+            if stderr:
+                print(f"   Error: {stderr.strip()}")
+            raise Exception(f"Silent failure is not an option. {description} failed.")
+        
+        # Visibility for wp-cli success messages
+        if stdout and ("Success:" in stdout or "deleted" in stdout.lower()):
+            for line in stdout.splitlines():
+                if "Success:" in line or "deleted" in line.lower():
+                    print(f"   ✅ {line.strip()}")
+        elif self.verbose:
+             print(f"   ✅ Command executed successfully.")
+
+    def _ensure_plugin_active(self, ssh, plugin_slug: str, description: str, config_json: Optional[str] = None):
+        """Ensures a plugin is installed and active on the remote server, with optional configuration"""
+        print(f"🔌 Checking plugin: {plugin_slug} ({description})...")
+        
+        # Check if installed
+        is_installed = is_plugin_installed(plugin_slug, self.remote_path, ssh=ssh)
+        if not is_installed:
+            print(f"   📥 Plugin {plugin_slug} is not installed. Installing...")
+            if not install_plugin(plugin_slug, self.remote_path, ssh=ssh):
+                raise Exception(f"Failed to install required cache plugin: {plugin_slug}")
+            print(f"   ✅ Installed {plugin_slug}")
+
+        # Check if active
+        status = get_plugin_status(plugin_slug, self.remote_path, ssh=ssh)
+        if status != 'active':
+            print(f"   ⚡ Plugin {plugin_slug} is '{status}'. Activating...")
+            if not activate_plugin(plugin_slug, self.remote_path, ssh=ssh):
+                raise Exception(f"Failed to activate required cache plugin: {plugin_slug}")
+            print(f"   ✅ Activated {plugin_slug}")
+        else:
+            print(f"   ✅ Plugin {plugin_slug} is already active.")
+
+        # Optional Configuration (Aligned with Ansible logic)
+        if config_json:
+            print(f"   ⚙️ Configuring {plugin_slug}...")
+            # Use shell to pipe JSON for complex options (like nginx-helper options)
+            cmd = f"echo '{config_json}' | wp option update rt_wp_nginx_helper_options --format=json"
+            self._run_remote_purge_or_fail(ssh, cmd, f"Configuring {plugin_slug}")
+
     def purge_caches(self, remote: bool = True) -> None:
         """
         Purges all configured caches (FastCGI, Redis, Filesystem)
         """
-        if remote:
-            with SSHClient(self.remote_host) as ssh:
-                # Transients (Always recommended post-sync)
-                print("🧹 Cleaning transients on remote server...")
-                ssh.execute(f"cd {self.remote_path} && wp transient delete --all")
-                
-                if not self.cache_config:
-                    # Legacy fallback
-                    print("🧹 Purging cache (remote default fallback)...")
-                    ssh.execute(f"cd {self.remote_path} && wp cache flush")
-                    ssh.execute(f"cd {self.remote_path} && wp nginx-helper purge-all")
-                    return
+        try:
+            if remote:
+                with SSHClient(self.remote_host) as ssh:
+                    # Transients (Always recommended post-sync)
+                    self._run_remote_purge_or_fail(ssh, "wp transient delete --all", "Cleaning transients on remote server")
+                    
+                    if not self.cache_config:
+                        # Legacy fallback
+                        print("🧹 Purging cache (remote default fallback)...")
+                        self._ensure_plugin_active(ssh, "redis-cache", "Redis Object Cache")
+                        self._run_remote_purge_or_fail(ssh, "wp cache flush", "Flushing WordPress object cache")
+                        
+                        # Nginx Helper Config (Standard SporeHarbor values)
+                        nginx_cfg = json.dumps({
+                            "enable_purge": "1",
+                            "cache_method": "enable_fastcgi",
+                            "purge_method": "unlink_files",
+                            "is_fastcgi": "1",
+                            "cache_path": "/var/cache/angie/wordpress",
+                            "log_level": "INFO"
+                        })
+                        self._ensure_plugin_active(ssh, "nginx-helper", "Nginx Helper", config_json=nginx_cfg)
+                        self._run_remote_purge_or_fail(ssh, "wp nginx-helper purge-all", "Purging nginx-helper cache")
+                        return
 
-                # Redis / Object Cache
-                if self.cache_config.get('redis', {}).get('purge', False):
-                    print("🧹 Purging Redis object cache on remote...")
-                    ssh.execute(f"cd {self.remote_path} && wp cache flush")
-                
-                # FastCGI Cache (Angie/Nginx)
-                fastcgi_cfg = self.cache_config.get('fastcgi', {})
-                if fastcgi_cfg.get('purge', False) and fastcgi_cfg.get('path'):
-                    path = fastcgi_cfg['path']
-                    print(f"🧹 Purging Nginx FastCGI cache on remote: {path}")
-                    # Use find to delete children only, keeps root directory and permissions
-                    ssh.execute(f"find {path} -mindepth 1 -delete")
-                
-                # WordPress Filesystem Cache (wp-content/cache)
-                if self.cache_config.get('wordpress', {}).get('purge', False):
-                    print("🧹 Purging WordPress filesystem cache on remote...")
-                    wp_cache_path = os.path.join(self.remote_path, 'wp-content/cache')
-                    ssh.execute(f"test -d {wp_cache_path} && find {wp_cache_path} -mindepth 1 -delete")
-        else:
-            # Local (DDEV)
-            print("🧹 Cleaning transients in local environment...")
-            run_wp_cli(["transient", "delete", "--all"], self.local_path.parent, remote=False, use_ddev=True)
-            
-            # For local, we only purge what is explicitly enabled OR just Redis by default if no config
-            if self.cache_config:
-                if self.cache_config.get('redis', {}).get('purge', False):
-                    print("🧹 Purging local Redis object cache...")
-                    run_wp_cli(["cache", "flush"], self.local_path.parent, remote=False, use_ddev=True)
-                
-                if self.cache_config.get('wordpress', {}).get('purge', False):
-                    print("🧹 Purging local WordPress filesystem cache...")
-                    # Local path handling
-                    local_cache = self.local_path / "wp-content" / "cache"
-                    if local_cache.exists():
-                        shutil.rmtree(local_cache)
-                        local_cache.mkdir(parents=True, exist_ok=True)
+                    # Redis / Object Cache
+                    if self.cache_config.get('redis', {}).get('purge', False):
+                        self._ensure_plugin_active(ssh, "redis-cache", "Redis Object Cache")
+                        self._run_remote_purge_or_fail(ssh, "wp cache flush", "Purging Redis object cache on remote")
+                    
+                    # FastCGI Cache (Angie/Nginx)
+                    fastcgi_cfg = self.cache_config.get('fastcgi', {})
+                    if fastcgi_cfg.get('purge', False) and fastcgi_cfg.get('path'):
+                        # Strenghten: Ensure nginx-helper is active and configured correctly
+                        path = fastcgi_cfg['path']
+                        nginx_cfg = json.dumps({
+                            "enable_purge": "1",
+                            "cache_method": "enable_fastcgi",
+                            "purge_method": "unlink_files",
+                            "is_fastcgi": "1",
+                            "cache_path": path,
+                            "log_level": "INFO"
+                        })
+                        self._ensure_plugin_active(ssh, "nginx-helper", "Nginx Helper", config_json=nginx_cfg)
+                        
+                        # IMPORTANT: Adding trailing slash to ensure find follows symlink
+                        self._run_remote_purge_or_fail(
+                            ssh, 
+                            f"test -d {path} && find {path}/ -mindepth 1 -delete", 
+                            f"Purging Nginx FastCGI cache on remote: {path}"
+                        )
+                    
+                    # WordPress Filesystem Cache (wp-content/cache)
+                    if self.cache_config.get('wordpress', {}).get('purge', False):
+                        wp_cache_path = os.path.join(self.remote_path, 'wp-content/cache')
+                        self._run_remote_purge_or_fail(
+                            ssh,
+                            f"test -d {wp_cache_path} && find {wp_cache_path}/ -mindepth 1 -delete",
+                            "Purging WordPress filesystem cache on remote"
+                        )
             else:
-                # Default local behavior
-                run_wp_cli(["cache", "flush"], self.local_path.parent, remote=False, use_ddev=True)
+                # Local (DDEV)
+                print("🧹 Cleaning transients in local environment...")
+                code, stdout, stderr = run_wp_cli(["transient", "delete", "--all"], self.local_path.parent, remote=False, use_ddev=True)
+                if code != 0:
+                    raise Exception(f"Failed to clear local transients: {stderr}")
+                
+                # For local, we only purge what is explicitly enabled OR just Redis by default if no config
+                if self.cache_config:
+                    if self.cache_config.get('redis', {}).get('purge', False):
+                        print("🧹 Purging local Redis object cache...")
+                        code, stdout, stderr = run_wp_cli(["cache", "flush"], self.local_path.parent, remote=False, use_ddev=True)
+                        if code != 0:
+                            raise Exception(f"Failed to flush local Redis: {stderr}")
+                    
+                    if self.cache_config.get('wordpress', {}).get('purge', False):
+                        print("🧹 Purging local WordPress filesystem cache...")
+                        # Local path handling
+                        local_cache = self.local_path / "wp-content" / "cache"
+                        if local_cache.exists():
+                            shutil.rmtree(local_cache)
+                            local_cache.mkdir(parents=True, exist_ok=True)
+                else:
+                    # Default local behavior
+                    code, stdout, stderr = run_wp_cli(["cache", "flush"], self.local_path.parent, remote=False, use_ddev=True)
+                    if code != 0:
+                        raise Exception(f"Failed to flush local cache (default): {stderr}")
+
+        except Exception as e:
+            print(f"❌ Critical error during cache purge: {str(e)}")
+            # If we are in an automated sync, we want the whole process to fail
+            sys.exit(1)
 
     def import_to_remote(self, sql_file: str, is_gzipped: bool = False) -> bool:
         """
