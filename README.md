@@ -4,11 +4,16 @@
 
 # wp_chariot
 
-> Spin up idempotent WordPress dev environments with one click. Synchronize bidirectionally between local and production. Only requires SSH on your server and DDEV/Python on your local machine. Designed to save time for freelancers and small agencies working with WordPress.
+> **Declarative, deterministic, and idempotent WordPress environments.**
+
+`wp_chariot` brings an Infrastructure as Code (IaC) approach to WordPress local development and remote synchronization. Instead of manual setups and brittle sync scripts, you define your entire environment—SSH connections, database handling, path mappings, and security exclusions—in a single `sites.yaml` file.
+
+Spin up identical local environments and execute strict, unidirectional synchronizations between local DDEV and production servers. Designed to eliminate configuration drift, save hours of setup time, and protect production data for freelancers and agencies.
 
 **BETA: Mostly tested, but use with caution on important production sites until it gets tested by more people.**
 
 ## Table of Contents
+
 - [Overview](#overview)
 - [Main Features](#main-features)
 - [Requirements](#requirements)
@@ -30,17 +35,19 @@ All of this with minimal requirements on both local and server environments, usi
 
 ## Main Features
 
-- **Bidirectional synchronization** of files between local and remote environment
-- **Database synchronization** with automatic URL and configuration adjustment
-- **Advanced patch management system** for modifying third-party plugins
-- **Media path management** for working with production media directly
-- **Multi-site management** from a single installation
-- **Security protections** to prevent accidental changes to production
-- **Idempotent operations** that can be safely repeated
+- **Declarative Configuration**: A single `sites.yaml` file dictates the complete state and behavior of your environments.
+- **Idempotent Operations**: Run sync or initialization commands safely as many times as you want.
+- **Deterministic Outcomes**: Eradicates "it works on my machine" issues by leveraging standard configuration alongside DDEV.
+- **Explicit Unidirectional Sync**: While bidirectional sync is technically supported, the architecture advocates for separate, strictly unidirectional configurations (e.g., distinct "Pull-Only" mapping and "Push-Only" mappings) for absolute safety against accidental overwrites.
+- **Strict Security Protections**: Built-in production safety checks (`production_safety: enabled`) prevent catastrophic accidental pushes.
+- **Advanced patch management system** for modifying third-party plugins in a controlled, traceable manner.
+- **Media path management** to serve production media directly without downloading gigabytes of uploads.
+- **Multi-site readiness** to manage dozens of sites from a single centralized installation.
 
 ## Requirements
 
 ### Local Machine
+
 - Unix-based OS (Linux/macOS)
 - Python 3.8 or higher
 - uv installed ([installation guide](https://docs.astral.sh/uv/getting-started/installation/))
@@ -48,11 +55,16 @@ All of this with minimal requirements on both local and server environments, usi
 - SSH access to your remote server
 
 ### Remote Server
+
 - Unix-based server with PHP
+- **Web Server**: Nginx or Angie (optional but recommended for caching integration)
+- **Object Cache**: Redis (optional but recommended)
 - WP-CLI installed
 - SSH access
 - MySQL/MariaDB access with user credentials
-- Regular user permissions to WordPress files and database
+- **CRITICAL: Pool Isolation**. The remote user must have standard permissions to WordPress files and the database, but it is *highly* recommended that the server enforces OS-level user isolation per site (e.g. PHP-FPM pools running as specific users).
+
+> **Note**: This tool provides out-of-the-box optimization specifically tuned for `tt-wordpress-automation` and SporeHarbor deployments. However, it is fundamentally agnostic and remains compatible with general LEMP architectures, RunCloud distributions, or similar control panels that adhere to standard user isolation practices.
 
 For detailed compatibility information, see the [Compatibility Guide](docs/compatibility.md).
 
@@ -61,35 +73,26 @@ For detailed compatibility information, see the [Compatibility Guide](docs/compa
 ```bash
 # Clone the tool OUTSIDE your WordPress installation
 git clone https://github.com/aficiomaquinas/wp_chariot.git ~/wp_chariot
-
-# Set up your environment
 cd ~/wp_chariot/python
+
+# Create virtual environment and install dependencies
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 uv sync
+
+# Set up your declarative configuration
 cp config.example.yaml config.yaml
 cp sites.example.yaml sites.yaml
 
-# Edit configuration files with your site details
+# Define your environment mapping and credentials
 vim sites.yaml
 
-# Initialize and set up your first site
-uv run wpchariot site --init
-uv run wpchariot site --add mysite
-uv run wpchariot init --with-db --with-media --site mysite
-```
-
-**Alternative: Activate virtual environment manually**
-
-```bash
-# Create and activate virtual environment
-uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install dependencies
-uv sync
-
-# Now you can run commands directly
+# Initialize CLI state
 wpchariot site --init
-wpchariot site --add mysite
+
+# Execute an explicit, unidirectional synchronization (Push-Only example)
+# This will push DB, file changes, handle infrastructure plugins, and safely clear remote caches
+wpchariot sync-all --direction to-remote --with-infra --site mysite-staging --yes
 ```
 
 For detailed installation instructions, see the [Installation Guide](docs/installation.md).
