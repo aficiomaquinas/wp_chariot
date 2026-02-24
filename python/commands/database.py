@@ -707,7 +707,7 @@ class DatabaseSynchronizer:
                         nginx_cfg = json.dumps({
                             "enable_purge": "1",
                             "cache_method": "enable_fastcgi",
-                            "purge_method": "unlink_files",
+                            "purge_method": "get_request",
                             "is_fastcgi": "1",
                             "cache_path": "/var/cache/angie/wordpress",
                             "log_level": "INFO"
@@ -726,10 +726,11 @@ class DatabaseSynchronizer:
                     if fastcgi_cfg.get('purge', False) and fastcgi_cfg.get('path'):
                         # Strenghten: Ensure nginx-helper is active and configured correctly
                         path = fastcgi_cfg['path']
+                        purge_method = fastcgi_cfg.get('purge_method', 'get_request')
                         nginx_cfg = json.dumps({
                             "enable_purge": "1",
                             "cache_method": "enable_fastcgi",
-                            "purge_method": "unlink_files",
+                            "purge_method": purge_method,
                             "is_fastcgi": "1",
                             "cache_path": path,
                             "log_level": "INFO"
