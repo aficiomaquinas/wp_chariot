@@ -158,7 +158,7 @@ def _execute_ssh_command(command: List[str], remote_host: str, remote_path: str,
 def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False, 
               remote_host: Optional[str] = None, remote_path: Optional[str] = None,
               use_ddev: bool = True, wp_path: Optional[str] = None,
-              memory_limit: Optional[str] = None) -> Tuple[int, str, str]:
+              memory_limit: Optional[str] = None, ssh: Any = None) -> Tuple[int, str, str]:
     """
     Executes a WP-CLI command
     
@@ -175,6 +175,7 @@ def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False,
         wp_path: Path inside the DDEV container where WordPress is located
                 (REQUIRED if use_ddev=True, obtained from sites.yaml)
         memory_limit: Memory limit for PHP (if None, uses the configuration value)
+        ssh: Optional existing SSHClient object to use for remote commands
         
     Returns:
         Tuple[int, str, str]: Exit code, standard output, standard error
@@ -189,6 +190,14 @@ def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False,
     # Execute command according to the environment
     if remote:
         # Remote command via SSH
+        if ssh:
+            # Use shared SSH session
+            # Properly escape each segment of the command
+            escaped_command = " ".join([shlex.quote(arg) for arg in command])
+            php_memory_cmd = f"php -d memory_limit={memory_limit}"
+            ssh_cmd = f"cd {remote_path} && {php_memory_cmd} $(which wp) {escaped_command}"
+            return ssh.execute(ssh_cmd)
+            
         if not remote_host or not remote_path:
             return 1, "", "Remote host and path are required to execute WP-CLI on the server"
         return _execute_ssh_command(command, remote_host, remote_path, memory_limit)
@@ -206,7 +215,7 @@ def run_wp_cli(command: List[str], path: Union[str, Path], remote: bool = False,
 def is_plugin_installed(plugin_slug: str, path: Union[str, Path], remote: bool = False,
                        remote_host: Optional[str] = None, remote_path: Optional[str] = None,
                        use_ddev: bool = True, wp_path: Optional[str] = None,
-                       memory_limit: Optional[str] = None) -> bool:
+                       memory_limit: Optional[str] = None, ssh: Any = None) -> bool:
     """
     Verifies if a plugin is installed
     
@@ -219,13 +228,14 @@ def is_plugin_installed(plugin_slug: str, path: Union[str, Path], remote: bool =
         use_ddev: If True (default), uses ddev in local environment
         wp_path: Specific WordPress path inside the container (optional)
         memory_limit: Memory limit for PHP (optional)
+        ssh: Optional existing SSHClient object to use for remote commands
         
     Returns:
         bool: True if the plugin is installed, False otherwise
     """
     cmd = ["plugin", "list", "--status=inactive,active", "--format=json"]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit, ssh=ssh)
     
     if code != 0:
         return False
@@ -240,9 +250,9 @@ def is_plugin_installed(plugin_slug: str, path: Union[str, Path], remote: bool =
         return False
 
 def get_plugin_status(plugin_slug: str, path: Union[str, Path], remote: bool = False,
-                     remote_host: Optional[str] = None, remote_path: Optional[str] = None,
-                     use_ddev: bool = True, wp_path: Optional[str] = None,
-                     memory_limit: Optional[str] = None) -> Optional[str]:
+                      remote_host: Optional[str] = None, remote_path: Optional[str] = None,
+                      use_ddev: bool = True, wp_path: Optional[str] = None,
+                      memory_limit: Optional[str] = None, ssh: Any = None) -> Optional[str]:
     """
     Gets the status of a plugin (active, inactive, not installed)
     
@@ -255,13 +265,14 @@ def get_plugin_status(plugin_slug: str, path: Union[str, Path], remote: bool = F
         use_ddev: If True (default), uses ddev in local environment
         wp_path: Specific WordPress path inside the container (optional)
         memory_limit: Memory limit for PHP (optional)
+        ssh: Optional existing SSHClient object to use for remote commands
         
     Returns:
         Optional[str]: Plugin status ("active", "inactive", None if not installed)
     """
     cmd = ["plugin", "list", "--format=json"]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit, ssh=ssh)
     
     if code != 0:
         return None
@@ -278,7 +289,7 @@ def get_plugin_status(plugin_slug: str, path: Union[str, Path], remote: bool = F
 def install_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = False,
                   remote_host: Optional[str] = None, remote_path: Optional[str] = None,
                   use_ddev: bool = True, wp_path: Optional[str] = None, 
-                  use_url: bool = False, memory_limit: Optional[str] = None) -> bool:
+                  use_url: bool = False, memory_limit: Optional[str] = None, ssh: Any = None) -> bool:
     """
     Installs a WordPress plugin
     
@@ -292,6 +303,7 @@ def install_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = Fals
         wp_path: Specific WordPress path inside the container (optional)
         use_url: If True, plugin_slug is interpreted as a URL
         memory_limit: Memory limit for PHP (optional)
+        ssh: Optional existing SSHClient object to use for remote commands
         
     Returns:
         bool: True if the plugin was installed correctly, False otherwise
@@ -301,7 +313,7 @@ def install_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = Fals
     if use_url:
         cmd.append("--force")
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit, ssh=ssh)
     
     if code != 0:
         print(f"Error installing the plugin: {stderr}")
@@ -316,7 +328,7 @@ def install_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = Fals
 def activate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = False,
                    remote_host: Optional[str] = None, remote_path: Optional[str] = None,
                    use_ddev: bool = True, wp_path: Optional[str] = None,
-                   memory_limit: Optional[str] = None) -> bool:
+                   memory_limit: Optional[str] = None, ssh: Any = None) -> bool:
     """
     Activates a WordPress plugin
     
@@ -329,12 +341,13 @@ def activate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = Fal
         use_ddev: If True (default), uses ddev in local environment
         wp_path: Specific WordPress path inside the container (optional)
         memory_limit: Memory limit for PHP (optional)
+        ssh: Optional existing SSHClient object to use for remote commands
         
     Returns:
         bool: True if the plugin was activated correctly, False otherwise
     """
     # Verify current plugin status
-    status = get_plugin_status(plugin_slug, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
+    status = get_plugin_status(plugin_slug, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit, ssh=ssh)
     
     # If already active, do nothing
     if status == "active":
@@ -347,7 +360,7 @@ def activate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = Fal
     # Activate the plugin
     cmd = ["plugin", "activate", plugin_slug]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit, ssh=ssh)
     
     if code != 0:
         print(f"Error activating the plugin: {stderr}")

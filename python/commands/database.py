@@ -12,6 +12,7 @@ import time
 import re
 import subprocess
 import shutil
+import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
 
@@ -252,7 +253,8 @@ class DatabaseSynchronizer:
                     path=".",  # Doesn't matter here, remote_path is used
                     remote=True,
                     remote_host=self.remote_host,
-                    remote_path=self.remote_path
+                    remote_path=self.remote_path,
+                    ssh=ssh
                 )
                 
                 if code != 0:
@@ -661,18 +663,18 @@ class DatabaseSynchronizer:
         print(f"🔌 Checking plugin: {plugin_slug} ({description})...")
         
         # Check if installed
-        is_installed = is_plugin_installed(plugin_slug, self.remote_path, ssh=ssh)
+        is_installed = is_plugin_installed(plugin_slug, self.remote_path, remote=True, remote_path=self.remote_path, ssh=ssh)
         if not is_installed:
             print(f"   📥 Plugin {plugin_slug} is not installed. Installing...")
-            if not install_plugin(plugin_slug, self.remote_path, ssh=ssh):
+            if not install_plugin(plugin_slug, self.remote_path, remote=True, remote_path=self.remote_path, ssh=ssh):
                 raise Exception(f"Failed to install required cache plugin: {plugin_slug}")
             print(f"   ✅ Installed {plugin_slug}")
 
         # Check if active
-        status = get_plugin_status(plugin_slug, self.remote_path, ssh=ssh)
+        status = get_plugin_status(plugin_slug, self.remote_path, remote=True, remote_path=self.remote_path, ssh=ssh)
         if status != 'active':
             print(f"   ⚡ Plugin {plugin_slug} is '{status}'. Activating...")
-            if not activate_plugin(plugin_slug, self.remote_path, ssh=ssh):
+            if not activate_plugin(plugin_slug, self.remote_path, remote=True, remote_path=self.remote_path, ssh=ssh):
                 raise Exception(f"Failed to activate required cache plugin: {plugin_slug}")
             print(f"   ✅ Activated {plugin_slug}")
         else:
@@ -997,13 +999,6 @@ class DatabaseSynchronizer:
                 print("❌ DDEV is not installed or not in the PATH")
                 return False
                 
-            # NEW: Pre-flight check for disk space
-            # Minimum 2GB free required for safe database import
-            with SSHClient(self.remote_host) as ssh:
-                if not ssh.check_disk_space(self.remote_path, threshold_gb=2):
-                    print("❌ Aborting synchronization due to insufficient disk space on the remote server.")
-                    return False
-                
             # Dry run
             if dry_run:
                 print("🔄 Dry run mode: No real changes will be made")
@@ -1029,43 +1024,48 @@ class DatabaseSynchronizer:
             sql_file = self.export_local_db()
             if not sql_file:
                 return False
-                
-            # 2. Import to remote
-            success = self.import_to_remote(sql_file)
-            
-            if not success:
-                return False
-                
-            # 3. Replace URLs on the server
-            print(f"🔄 Replacing URLs on the remote server...")
-            
-            # 3. Replace URLs using wp-cli on remote server
-            print(f"🔄 Replacing URLs: {self.local_url} -> {self.remote_url}")
-            
-            try:
-                # Standard search-replace with best practice flags
-                run_wp_cli(
-                    ["search-replace", self.local_url, self.remote_url, "--all-tables", "--precise", "--skip-columns=guid"],
-                    path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path
-                )
-                
-                # Protocol fallback (ensure http/https variants are covered)
-                if self.local_url.startswith("https://"):
-                    http_local = self.local_url.replace("https://", "http://")
-                    run_wp_cli(["search-replace", http_local, self.remote_url, "--all-tables", "--precise", "--skip-columns=guid"],
-                               path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
-                
-                # Force accessibility options
-                print(f"   - Updating siteurl and home to: {self.remote_url}")
-                run_wp_cli(["option", "update", "siteurl", self.remote_url], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
-                run_wp_cli(["option", "update", "home", self.remote_url], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path)
 
-                # Best Practice: Clean transients and flush cache after migration
-                self.purge_caches(remote=True)
-                
-                print("✅ Database sync (local -> remote) completed on the server")
+            # Remote operations with a single shared SSH session
+            try:
+                with SSHClient(self.remote_host) as ssh:
+                    # NEW: Pre-flight check for disk space
+                    # Minimum 2GB free required for safe database import
+                    if not ssh.check_disk_space(self.remote_path, threshold_gb=2):
+                        print("❌ Aborting synchronization due to insufficient disk space on the remote server.")
+                        return False
+                    
+                    # 2. Import to remote
+                    success = self.import_to_remote(sql_file)
+                    if not success:
+                        return False
+                        
+                    # 3. Replace URLs on the server
+                    print(f"🔄 Replacing URLs on the remote server...")
+                    print(f"🔄 Replacing URLs: {self.local_url} -> {self.remote_url}")
+                    
+                    # Standard search-replace with best practice flags
+                    run_wp_cli(
+                        ["search-replace", self.local_url, self.remote_url, "--all-tables", "--precise", "--skip-columns=guid"],
+                        path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path, ssh=ssh
+                    )
+                    
+                    # Protocol fallback (ensure http/https variants are covered)
+                    if self.local_url.startswith("https://"):
+                        http_local = self.local_url.replace("https://", "http://")
+                        run_wp_cli(["search-replace", http_local, self.remote_url, "--all-tables", "--precise", "--skip-columns=guid"],
+                                   path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path, ssh=ssh)
+                    
+                    # Force accessibility options
+                    print(f"   - Updating siteurl and home to: {self.remote_url}")
+                    run_wp_cli(["option", "update", "siteurl", self.remote_url], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path, ssh=ssh)
+                    run_wp_cli(["option", "update", "home", self.remote_url], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path, ssh=ssh)
+
+                    # Best Practice: Clean transients and flush cache after migration
+                    self.purge_caches(remote=True)
+                    
+                    print("✅ Database sync (local -> remote) completed on the server")
             except Exception as e:
-                print(f"❌ Error during remote URL replacement: {str(e)}")
+                print(f"❌ Error during remote operations: {str(e)}")
                 return False
             
             # Clean temporary files
