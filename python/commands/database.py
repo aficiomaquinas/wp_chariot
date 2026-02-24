@@ -634,7 +634,9 @@ class DatabaseSynchronizer:
                 path_match = re.search(r'find\s+([^\s]+)', cmd)
                 if path_match:
                     find_path = path_match.group(1)
-                    count_cmd = f"cd {self.remote_path} && find {find_path} -mindepth 1 | wc -l"
+                    # Use sudo for counting if the main command uses it
+                    sudo_prefix = "sudo " if "sudo " in cmd else ""
+                    count_cmd = f"cd {self.remote_path} && {sudo_prefix}find {find_path} -mindepth 1 | wc -l"
                     _, count_out, _ = ssh.execute(count_cmd)
                     print(f"   ℹ️ Found {count_out.strip()} items to purge in {find_path}")
             except Exception:
@@ -737,9 +739,10 @@ class DatabaseSynchronizer:
                         self._ensure_plugin_active(ssh, "nginx-helper", "Nginx Helper", config_json=nginx_cfg)
                         
                         # IMPORTANT: Adding trailing slash to ensure find follows symlink
+                        # Using sudo as /var/cache/angie is usually owned by the webserver user
                         self._run_remote_purge_or_fail(
                             ssh, 
-                            f"test -d {path} && find {path}/ -mindepth 1 -delete", 
+                            f"test -d {path} && sudo find {path}/ -mindepth 1 -delete", 
                             f"Purging Nginx FastCGI cache on remote: {path}"
                         )
                     
