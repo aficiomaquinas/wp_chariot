@@ -740,7 +740,7 @@ class DatabaseSynchronizer:
                         # IMPORTANT: Adding trailing slash to ensure find follows symlink
                         self._run_remote_purge_or_fail(
                             ssh, 
-                            f"sudo test -d {path} && sudo find {path}/ -mindepth 1 -delete", 
+                            f"sudo /usr/bin/test -d {path} && sudo /usr/bin/find {path}/ -mindepth 1 -delete", 
                             f"Purging Nginx FastCGI cache on remote: {path}"
                         )
                     
