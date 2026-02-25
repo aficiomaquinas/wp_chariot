@@ -737,10 +737,10 @@ class DatabaseSynchronizer:
                         })
                         self._ensure_plugin_active(ssh, "nginx-helper", "Nginx Helper", config_json=nginx_cfg)
                         
-                        # IMPORTANT: Adding trailing slash to ensure find follows symlink
+                        # IMPORTANT: Ensure find avoids failure if directory is missing and follow paths correctly
                         self._run_remote_purge_or_fail(
                             ssh, 
-                            f"sudo /usr/bin/test -d {path} && sudo /usr/bin/find {path}/ -mindepth 1 -delete", 
+                            f"sudo /usr/bin/test ! -d {path} || sudo /usr/bin/find {path}/ -mindepth 1 -delete", 
                             f"Purging Nginx FastCGI cache on remote: {path}"
                         )
                     
@@ -749,7 +749,7 @@ class DatabaseSynchronizer:
                         wp_cache_path = os.path.join(self.remote_path, 'wp-content/cache')
                         self._run_remote_purge_or_fail(
                             ssh,
-                            f"test -d {wp_cache_path} && find {wp_cache_path}/ -mindepth 1 -delete",
+                            f"test ! -d {wp_cache_path} || find {wp_cache_path}/ -mindepth 1 -delete",
                             "Purging WordPress filesystem cache on remote"
                         )
             else:
