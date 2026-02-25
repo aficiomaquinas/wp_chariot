@@ -133,7 +133,15 @@ This architecture ensures that `wp_chariot` can:
 - Synchronize files via `rsync` without permission errors.
 - Apply and revert patches that modify plugin code.
 - Execute `wp-cli` commands that affect the database and files.
-- Maintain consistent ownership across all operations without needing complex ACLs or `sudo` requirements.
+- Maintain consistent ownership across all operations without needing complex ACLs or `sudo` requirements for standard WordPress operations.
+
+### Passwordless Sudo Requirement (Cache Purging)
+
+While standard WordPress files are owned by the specific site user, **FastCGI caching** (e.g., via Nginx or Angie) introduces an exception. Web servers generate these cache directories (`/var/cache/nginx/...` or `/var/cache/angie/...`) using their own worker users (like `nginx` or `angie`) with highly restricted permissions (e.g., `drwx--S---+`).
+
+To effectively purge these caches, `wp_chariot` must execute `sudo find ... -delete` commands via SSH. Therefore, **the SSH user must have passwordless sudo privileges** for `wp_chariot` to succeed without prompting for a password and halting the automated sync.
+
+If you are using a non-standard setup (e.g., limited shared hosting without sudo, or restrictive control panels that don't grant passwordless sudo to the SSH user), full automated FastCGI cache purging via `wp_chariot` is **not fully supported** out of the box. Modern stacks (like Sovereign LEMP) inherently provision the deploy user with the necessary `NOPASSWD` sudo rules.
 
 ### Non-Supported Architecture: Separate `www-data`
 
