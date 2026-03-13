@@ -19,7 +19,7 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 from config_yaml import get_yaml_config
 from utils.ssh import SSHClient
 from utils.filesystem import ensure_dir_exists, create_backup
-from utils.wp_cli import run_wp_cli, is_plugin_installed, activate_plugin, install_plugin, get_plugin_status
+from utils.wp_cli import run_wp_cli, is_plugin_installed, activate_plugin, install_plugin, get_plugin_status, update_option
 
 class DatabaseSynchronizer:
     """
@@ -117,10 +117,16 @@ class DatabaseSynchronizer:
         if config_obj and hasattr(config_obj, 'config'):
             self.config = config_obj.config
             
-            # Check if we have DDEV configuration and display it if in verbose mode
-            if self.verbose and 'ddev' in self.config:
-                ddev_webroot = self.config.get('ddev', {}).get('webroot', 'Not configured')
-                print(f"   - DDEV webroot: {ddev_webroot}")
+        # Initialize DDEV WP Path
+        self.ddev_wp_path = None
+        if 'ddev' in self.config:
+            ddev_config = self.config.get('ddev', {})
+            if 'base_path' in ddev_config and 'docroot' in ddev_config:
+                self.ddev_wp_path = f"{ddev_config['base_path']}/{ddev_config['docroot']}"
+                if self.verbose:
+                    print(f"   - DDEV wp_path: {self.ddev_wp_path}")
+            elif self.verbose:
+                print("   - DDEV configuration incomplete (missing base_path or docroot)")
         
         # Check if default values are being used
         default_values = ["example-server", "remote_db_name", "remote_db_user", "remote_db_password"]
@@ -755,7 +761,7 @@ class DatabaseSynchronizer:
             else:
                 # Local (DDEV)
                 print("🧹 Cleaning transients in local environment...")
-                code, stdout, stderr = run_wp_cli(["transient", "delete", "--all"], self.local_path.parent, remote=False, use_ddev=True)
+                code, stdout, stderr = run_wp_cli(["transient", "delete", "--all"], self.local_path.parent, remote=False, use_ddev=True, wp_path=self.ddev_wp_path)
                 if code != 0:
                     raise Exception(f"Failed to clear local transients: {stderr}")
                 
@@ -763,7 +769,7 @@ class DatabaseSynchronizer:
                 if self.cache_config:
                     if self.cache_config.get('redis', {}).get('purge', False):
                         print("🧹 Purging local Redis object cache...")
-                        code, stdout, stderr = run_wp_cli(["cache", "flush"], self.local_path.parent, remote=False, use_ddev=True)
+                        code, stdout, stderr = run_wp_cli(["cache", "flush"], self.local_path.parent, remote=False, use_ddev=True, wp_path=self.ddev_wp_path)
                         if code != 0:
                             raise Exception(f"Failed to flush local Redis: {stderr}")
                     
@@ -776,7 +782,7 @@ class DatabaseSynchronizer:
                             local_cache.mkdir(parents=True, exist_ok=True)
                 else:
                     # Default local behavior
-                    code, stdout, stderr = run_wp_cli(["cache", "flush"], self.local_path.parent, remote=False, use_ddev=True)
+                    code, stdout, stderr = run_wp_cli(["cache", "flush"], self.local_path.parent, remote=False, use_ddev=True, wp_path=self.ddev_wp_path)
                     if code != 0:
                         raise Exception(f"Failed to flush local cache (default): {stderr}")
 
@@ -949,18 +955,18 @@ class DatabaseSynchronizer:
             # Standard search-replace with best practice flags
             run_wp_cli(
                 ["search-replace", self.remote_url, self.local_url, "--all-tables", "--precise", "--skip-columns=guid"],
-                self.local_path.parent, remote=False, use_ddev=True
+                self.local_path.parent, remote=False, use_ddev=True, wp_path=self.ddev_wp_path
             )
             
             # Protocol fallback (ensure http/https variants are covered)
             if self.remote_url.startswith("https://"):
                 http_remote = self.remote_url.replace("https://", "http://")
                 run_wp_cli(["search-replace", http_remote, self.local_url, "--all-tables", "--precise", "--skip-columns=guid"],
-                           self.local_path.parent, remote=False, use_ddev=True)
+                           self.local_path.parent, remote=False, use_ddev=True, wp_path=self.ddev_wp_path)
             
             # Force update core options for accessibility
-            update_option("siteurl", self.local_url, self.local_path.parent, use_ddev=True)
-            update_option("home", self.local_url, self.local_path.parent, use_ddev=True)
+            update_option("siteurl", self.local_url, self.local_path.parent, use_ddev=True, wp_path=self.ddev_wp_path)
+            update_option("home", self.local_url, self.local_path.parent, use_ddev=True, wp_path=self.ddev_wp_path)
 
             # Best Practice: Clean transients and flush cache after migration
             self.purge_caches(remote=False)

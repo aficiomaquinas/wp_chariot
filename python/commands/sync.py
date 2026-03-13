@@ -758,19 +758,7 @@ class FileSynchronizer:
         """
         print("🔧 Checking if local configuration needs adjustments...")
         
-        # Check media URL
-        media_config = self.config.config.get("media", {})
-        if media_config:
-            # Get URLs
-            remote_url = self.config.get("urls", "remote", default="")
-            local_url = self.config.get("urls", "local", default="")
-            
-            if remote_url and local_url and remote_url != local_url:
-                print("ℹ️ URLs are different, media configuration might need update")
-                print("💡 Use 'media-path' command to configure media URLs")
-                print("   Example: python cli.py media-path")
-        else:
-            print("ℹ️ No media configuration found, skipping")
+        pass
             
         # Clean cache
         try:
