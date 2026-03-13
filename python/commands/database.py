@@ -1064,8 +1064,8 @@ class DatabaseSynchronizer:
                     
                     # Force accessibility options
                     print(f"   - Updating siteurl and home to: {self.remote_url}")
-                    run_wp_cli(["option", "update", "siteurl", self.remote_url], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path, ssh=ssh)
-                    run_wp_cli(["option", "update", "home", self.remote_url], path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path, ssh=ssh)
+                    update_option("siteurl", self.remote_url, path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path, ssh=ssh)
+                    update_option("home", self.remote_url, path=".", remote=True, remote_host=self.remote_host, remote_path=self.remote_path, ssh=ssh)
 
                     # Best Practice: Clean transients and flush cache after migration
                     self.purge_caches(remote=True)

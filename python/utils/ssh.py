@@ -284,10 +284,12 @@ def run_rsync(
     if dry_run:
         options.append("--dry-run")
         
-    # Configure SSH
-    ssh_cmd = "ssh"
+    # Configure SSH with standard options for robustness
+    default_ssh_opts = "-o StrictHostKeyChecking=no -o IdentitiesOnly=yes"
     if ssh_options:
-        ssh_cmd = f"ssh {ssh_options}"
+        ssh_cmd = f"ssh {default_ssh_opts} {ssh_options}"
+    else:
+        ssh_cmd = f"ssh {default_ssh_opts}"
         
     # Build base command
     cmd = ["rsync", "-e", ssh_cmd]

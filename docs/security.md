@@ -84,6 +84,20 @@ protected_files:
      IdentityFile ~/.ssh/id_ed25519
    ```
 
+### SSH Authentication Policy
+
+**wpchariot strictly requires SSH Key-Based Authentication.** 
+
+Password-based authentication and tools like `sshpass` are **not supported** and are intentionally avoided for the following reasons:
+
+- **Security Risks**: `sshpass` exposes passwords in process lists (`ps`) and environment variables, making them visible to other users or compromised processes.
+- **Automation Reliability**: Password prompts are interactive and brittle. Public-key authentication is the industry standard for unattended execution.
+- **Mitigation of Brute Force**: Key-based auth is significantly more resistant to brute-force attacks than passwords.
+
+#### Robustness Flags
+wpchariot automatically adds the following flags to all SSH and rsync calls to ensure security and robustness:
+
+- `-o IdentitiesOnly=yes`: Ensures that *only* the specified identity (key) is offered to the server. This prevents "Too many authentication failures" errors caused by trying too many keys from your SSH agent.
 ### SSH Authentication
 
 Consider using SSH agent for convenient but secure authentication:

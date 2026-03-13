@@ -12,7 +12,8 @@ from utils.wp_cli import (
     run_wp_cli,
     install_plugin,
     activate_plugin,
-    flush_cache as wp_flush_cache
+    flush_cache as wp_flush_cache,
+    update_option
 )
 from config_yaml import get_yaml_config, get_nested
 
@@ -95,14 +96,9 @@ def install_cache(remote: bool = False, verbose: bool = False) -> bool:
         }
         
         options_json = json.dumps(options)
-        # Use single quotes for the JSON value to avoid shell expansion issues
-        cmd = ["option", "update", "rt_wp_nginx_helper_options", options_json]
-        code, stdout, stderr = run_wp_cli(cmd, local_path, remote, remote_host, remote_path, True, ddev_wp_path, memory_limit)
-        
-        if code == 0:
+        if update_option("rt_wp_nginx_helper_options", options_json, local_path, remote, remote_host, remote_path, True, ddev_wp_path, memory_limit):
             print(f"✅ Nginx Helper configured correctly.")
         else:
-            print(f"❌ Error configuring Nginx Helper: {stderr}")
             return False
     else:
         if fcgi_cfg.get("purge", False):

@@ -52,7 +52,7 @@ All of this with minimal requirements on both local and server environments, usi
 - Python 3.8 or higher
 - uv installed ([installation guide](https://docs.astral.sh/uv/getting-started/installation/))
 - DDEV installed
-- SSH access to your remote server
+- SSH access to your remote server (**SSH Keys only**, password-based auth/sshpass is not supported)
 
 ### Remote Server
 

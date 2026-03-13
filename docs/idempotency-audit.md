@@ -16,9 +16,9 @@ An operation is **idempotent** if running it multiple times has the same effect 
 | Command / Operation | Idempotent? | Notes |
 |---------------------|:-----------:|-------|
 | `sync-files` | ✅ **Yes** | Uses `rsync`, which only transfers changes. |
-| `sync-db` | ⚠️ **Partial** | Importing is destructive (replaces DB). Search-replace is safe if search strings are unique. |
+| `sync-db` | ⚠️ **Partial** | Importing is destructive (replaces DB). Search-replace is safe if search strings are unique. **Handling Exit Code 1**: WP-CLI may return exit code 1 with the message `Error: Could not update option` if the value is already the same as the target. wpchariot detects this case and treats it as a success to maintain idempotence. |
 | `patch-commit` | ✅ **Yes** | Checks if patch is already applied before applying. |
-| `media-path` | ✅ **Yes** | Updates options and flushes cache. Updating to the same value is neutral. |
+| `media-path` | ✅ **Yes** | Updates options and flushes cache. Updating to the same value is neutral. We handle the WP-CLI "no-op failure" (Exit Code 1) as a successful idempotent state. |
 | `plugin install` | ✅ **Yes** | `wp plugin install` handles "already installed" gracefully. |
 | `plugin activate` | ✅ **Yes** | `wp plugin activate` does nothing if already active. |
 | `init` / `sync-all` | ✅ **Yes** | Composed of idempotent sub-commands. |

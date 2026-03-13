@@ -142,7 +142,10 @@ def _execute_ssh_command(command: List[str], remote_host: str, remote_path: str,
     php_memory_cmd = f"php -d memory_limit={memory_limit}"
     # Properly escape each segment of the command
     escaped_command = " ".join([shlex.quote(arg) for arg in command])
-    ssh_cmd = ["ssh", remote_host, f"cd {remote_path} && {php_memory_cmd} $(which wp) {escaped_command}"]
+    
+    # Use standard security options to avoid interactive prompts
+    ssh_opts = "-o StrictHostKeyChecking=no -o IdentitiesOnly=yes"
+    ssh_cmd = ["ssh"] + ssh_opts.split() + [remote_host, f"cd {remote_path} && {php_memory_cmd} $(which wp) {escaped_command}"]
     
     try:
         result = subprocess.run(
@@ -603,7 +606,7 @@ def get_item_version_from_path(file_path: str, path: Union[str, Path], remote: b
 def flush_cache(path: Union[str, Path], remote: bool = False,
                remote_host: Optional[str] = None, remote_path: Optional[str] = None,
                use_ddev: bool = True, wp_path: Optional[str] = None,
-               memory_limit: Optional[str] = None) -> bool:
+               memory_limit: Optional[str] = None, ssh: Any = None) -> bool:
     """
     Flushes the WordPress cache
     
@@ -621,7 +624,7 @@ def flush_cache(path: Union[str, Path], remote: bool = False,
     """
     cmd = ["cache", "flush"]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit, ssh=ssh)
     
     if code != 0:
         print(f"⚠️ Error flushing cache: {stderr}")
@@ -633,7 +636,8 @@ def flush_cache(path: Union[str, Path], remote: bool = False,
 def update_option(option_name: str, option_value: str, path: Union[str, Path], 
                  remote: bool = False, remote_host: Optional[str] = None, 
                  remote_path: Optional[str] = None, use_ddev: bool = True, 
-                 wp_path: Optional[str] = None, memory_limit: Optional[str] = None) -> bool:
+                 wp_path: Optional[str] = None, memory_limit: Optional[str] = None,
+                 ssh: Any = None) -> bool:
     """
     Updates a WordPress option
     
@@ -653,9 +657,15 @@ def update_option(option_name: str, option_value: str, path: Union[str, Path],
     """
     cmd = ["option", "update", option_name, option_value]
     
-    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit)
+    code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit, ssh=ssh)
     
     if code != 0:
+        # WP-CLI returns exit code 1 if the option value is already the same
+        # We handle this as a success to maintain idempotence
+        if code == 1 and "Could not update option" in stderr:
+            print(f"✅ Option {option_name} is already set to the desired value (unchanged)")
+            return True
+            
         print(f"⚠️ Error updating option {option_name}: {stderr}")
         return False
         
