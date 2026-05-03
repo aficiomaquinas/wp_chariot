@@ -230,6 +230,15 @@ class FileSynchronizer:
         
         # Run rsync in comparison mode
         # Always use dry_run=True because this method is only to show differences
+        log_file = None
+        # Solo generar log si no estamos en modo verbose (para no duplicar salida)
+        if not verbose:
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Usar la ruta de la configuración si está disponible, sino una por defecto
+            log_dir = getattr(self.config, 'deploy_tools_dir', Path('.')) / "logs"
+            log_file = str(log_dir / f"rsync_diff_{timestamp}.log")
+            
         success, output = run_rsync(
             source=source,
             dest=dest,
@@ -237,7 +246,8 @@ class FileSynchronizer:
             exclusions=exclusions,
             dry_run=True,  # Always in simulation mode for diff
             capture_output=True,  # Capture output to process it ourselves
-            verbose=verbose  # Only show raw output in verbose mode
+            verbose=verbose,  # Only show raw output in verbose mode
+            log_file=log_file
         )
         
         if not success:
