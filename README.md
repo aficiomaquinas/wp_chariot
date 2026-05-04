@@ -55,7 +55,7 @@ sites:
       url: "https://mysite.com/wp-content/uploads/" # Direct offloading
       expert_mode: false
 
-    exclusions: # Strict desproductionalization
+    exclusions: # Strict deproductionalization
       wordfence: "wp-content/plugins/wordfence/"
       cache: "wp-content/cache/"
       wp-ses: "wp-content/plugins/wp-ses/"
@@ -64,7 +64,7 @@ sites:
 ### 🚀 One Command, Total Sync
 Once defined, synchronization becomes a deterministic operation. No more "guessing" which files changed or worrying about URL replacements.
 ```bash
-wpchariot sync-all --site mysite-prod --yes
+wpchariot sync-all --site mysite-prod --direction pull --yes
 ```
 This handles: **Database Export → S3/SSH Transfer → Local Import → Search & Replace → File Sync (with Exclusions) → Cache Purge.**
 

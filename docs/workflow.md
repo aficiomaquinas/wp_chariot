@@ -190,7 +190,7 @@ A common use case is using your local development environment to update a "stagi
 
 While `wp_chariot` doesn't use active entrypoint scripts for this, we achieve a "clean" environment by **strategic synchronization exclusions**. Since most of our business logic resides in custom plugins or themes, we can safely omit production-heavy or side-effect-prone third-party plugins.
 
-#### How it works (The "Sync-based" Desproductionalization)
+#### How it works (The "Sync-based" Deproductionalization)
 Instead of running a "desprod" script, we simply **never synchronize** certain folders. By excluding cache plugins, security WAFs, and tracking tools, the target environment (local or staging) never "sees" the production complexity.
 
 **Common Exclusions Example:**
@@ -201,7 +201,7 @@ exclusions:
   wordfence: wp-content/plugins/wordfence/
   akismet: wp-content/plugins/akismet/
   jetpack: wp-content/plugins/jetpack/
-  # Critical for desproductionalization: Omit Email/SMTP plugins and Payment Gateways
+  # Critical for deproductionalization: Omit Email/SMTP plugins and Payment Gateways
   wp-ses: wp-content/plugins/wp-ses/
   stripe: wp-content/plugins/stripe-for-woocommerce/
   # We ONLY keep our business logic:
@@ -244,7 +244,7 @@ The result is a staging server that mirrors production data but remains lightwei
 
 ### Live-to-Live Migration Workflow (Full Sync)
 
-For moving servers or Disaster Recovery without desproductionalization.
+For moving servers or Disaster Recovery without deproductionalization.
 
 #### The 4-Site Model (Isolation Strategy)
 To manage dev and full migrations without pollution, use separate folders:
