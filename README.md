@@ -33,6 +33,43 @@ wp_chariot allows WordPress developers to:
 
 All of this with minimal requirements on both local and server environments, using standard tools like SSH and rsync.
 
+---
+
+## 🛠️ Declarative Power: sites.yaml
+
+Stop managing sites with fragile one-off scripts. `wp_chariot` uses a single, declarative configuration to define the relationship between your local DDEV environment and your remote production server.
+
+```yaml
+sites:
+  mysite-prod:
+    ssh:
+      remote_host: "web-server-01"   # SSH alias in ~/.ssh/config
+      remote_path: "/var/www/site/"  # Production root
+      local_path: "/home/user/Projects/mysite/app/public/"
+    
+    urls:
+      remote: "https://mysite.com"
+      local: "https://mysite.ddev.site"
+
+    media:
+      url: "https://mysite.com/wp-content/uploads/" # Direct offloading
+      expert_mode: false
+
+    exclusions: # Strict desproductionalization
+      wordfence: "wp-content/plugins/wordfence/"
+      cache: "wp-content/cache/"
+      wp-ses: "wp-content/plugins/wp-ses/"
+```
+
+### 🚀 One Command, Total Sync
+Once defined, synchronization becomes a deterministic operation. No more "guessing" which files changed or worrying about URL replacements.
+```bash
+wpchariot sync-all --site mysite-prod --yes
+```
+This handles: **Database Export → S3/SSH Transfer → Local Import → Search & Replace → File Sync (with Exclusions) → Cache Purge.**
+
+---
+
 ## Main Features
 
 - **Declarative Configuration**: A single `sites.yaml` file dictates the complete state and behavior of your environments.
