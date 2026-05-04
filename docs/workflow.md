@@ -184,14 +184,14 @@ This is especially useful before running `sync-all` or `sync-files`.
 
 ## Workflow Variants
 
-### Staging Sync Workflow (Desproductionalized)
+### Staging Sync Workflow (Deproductionalized)
 
-A common use case is using your local development environment to update a "staging" or "test" server that should remain "desproductionalized". 
+A common use case is using your local development environment to update a "staging" or "test" server that should remain "deproductionalized". 
 
 While `wp_chariot` doesn't use active entrypoint scripts for this, we achieve a "clean" environment by **strategic synchronization exclusions**. Since most of our business logic resides in custom plugins or themes, we can safely omit production-heavy or side-effect-prone third-party plugins.
 
 #### How it works (The "Sync-based" Deproductionalization)
-Instead of running a "desprod" script, we simply **never synchronize** certain folders. By excluding cache plugins, security WAFs, and tracking tools, the target environment (local or staging) never "sees" the production complexity.
+Instead of running a "deprod" script, we simply **never synchronize** certain folders. By excluding cache plugins, security WAFs, and tracking tools, the target environment (local or staging) never "sees" the production complexity.
 
 **Common Exclusions Example:**
 ```yaml
@@ -213,7 +213,7 @@ A key part of why this "declarative" approach works so well is that it encourage
 - **Email**: By using plugins like Amazon SES or SendGrid and **excluding them** from synchronization, you ensure that your local or staging environment doesn't have the "credentials" or the "machinery" to accidentally send emails to real customers.
 - **Payments**: Similarly, by excluding payment gateway plugins, you physically remove the possibility of processing real transactions in a development environment.
 
-If you need more complex logic, since `wp_chariot` is a CLI tool, you can always wrap it in external scripts, but keeping the core "desprod" logic in the sync layer via exclusions makes the process robust and predictable.
+If you need more complex logic, since `wp_chariot` is a CLI tool, you can always wrap it in external scripts, but keeping the core "deprod" logic in the sync layer via exclusions makes the process robust and predictable.
 
 Since `sites.yaml` is designed to handle different environments cleanly, you can clone a site entry to manage this:
 
