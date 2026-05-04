@@ -59,12 +59,15 @@ sites:
       wordfence: "wp-content/plugins/wordfence/"
       cache: "wp-content/cache/"
       wp-ses: "wp-content/plugins/wp-ses/"
+    
+    sync: # Explicitly allowed directions for this site mapping
+      allowed_directions: ["from-remote", "to-remote"]
 ```
 
 ### 🚀 One Command, Total Sync
 Once defined, synchronization becomes a deterministic operation. No more "guessing" which files changed or worrying about URL replacements.
 ```bash
-wpchariot sync-all --site mysite-prod --direction pull --yes
+wpchariot sync-all --site mysite-prod --direction from-remote --yes
 ```
 This handles: **Database Export → S3/SSH Transfer → Local Import → Search & Replace → File Sync (with Exclusions) → Cache Purge.**
 

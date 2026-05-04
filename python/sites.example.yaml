@@ -19,6 +19,9 @@ sites:
     security:
       production_safety: "enabled" # enabled or disabled
 
+    sync:
+      allowed_directions: ["from-remote", "to-remote"]
+
     urls:
       remote: "https://site1.com"
       local: "https://site1.ddev.site"
