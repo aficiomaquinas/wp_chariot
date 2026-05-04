@@ -69,7 +69,22 @@ wpchariot site --add mysite
 
 Edit `sites.yaml` to configure your site with the appropriate connection details, paths, and other settings.
 
-### 2. Environment Initialization
+### 2. Local Infrastructure Initialization
+
+Before initializing the environment logic, you must manually prepare the DDEV infrastructure. `wp_chariot` expects a functional DDEV container to already exist at the `local_path` specified in your configuration.
+
+```bash
+# 1. Go to your project root (parent of your docroot)
+cd /home/aficio/Documents/DevelopmentV2/mysite/
+
+# 2. Configure DDEV (parameters must match sites.yaml)
+ddev config --project-name=mysite --project-type=wordpress --docroot=app/public
+
+# 3. Start the environment
+ddev start
+```
+
+### 3. Environment Initialization
 
 When you're ready to work on a site, initialize the local development environment:
 

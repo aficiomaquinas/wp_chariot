@@ -101,18 +101,7 @@ cp sites.example.yaml sites.yaml
 
 ### 4. Configure Your Site(s)
 
-Edit `sites.yaml` with your site information:
-
-```bash
-# Open with your preferred editor
-vim sites.yaml
-```
-
-Required configuration:
-- SSH connection details
-- Remote and local paths
-- Database credentials
-- URL configuration
+Edit `sites.yaml` to configure your site with the appropriate connection details, paths, and other settings.
 
 ### 5. Database Configuration 
 
@@ -148,6 +137,43 @@ uv run wpchariot check
 source .venv/bin/activate
 wpchariot check
 ```
+
+## 7. Local Infrastructure Initialization (DDEV)
+
+`wp_chariot` is designed to synchronize data and logic, but it does **not** automatically provision the underlying host-level infrastructure (like DDEV containers). You must initialize your local DDEV project independently before running synchronization commands.
+
+### Prerequisites for Site Initialization
+Ensure the following are defined in your `sites.yaml` for the site:
+- `local_path`: Absolute path to your local WordPress installation.
+- `ddev.docroot`: The relative path from the project root to the WordPress root (e.g., `app/public`).
+
+### Initialization Steps
+
+1. **Navigate to your local project directory** (the parent of your `local_path`'s docroot):
+   ```bash
+   # Example for ttamayocom-full
+   cd /home/aficio/Documents/DevelopmentV2/ttamayocom-full/
+   ```
+
+2. **Initialize DDEV**:
+   Run the DDEV configuration command matching your `sites.yaml` settings:
+   ```bash
+   ddev config --project-name=ttamayocom-full --project-type=wordpress --docroot=app/public --php-version=8.1
+   ```
+
+3. **Start DDEV**:
+   ```bash
+   ddev start
+   ```
+
+4. **Verify Alignment**:
+   Run `wpchariot check` to ensure `wp_chariot` can see the running DDEV container and that the paths match:
+   ```bash
+   cd ~/wp_chariot/python
+   uv run wpchariot check --site ttamayocom-full
+   ```
+
+Once the DDEV infrastructure is ready, you can proceed with the `init` or `sync-all` commands.
 
 ## Configuration Verification
 
