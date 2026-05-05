@@ -40,7 +40,7 @@ def create_full_backup(site_alias: Optional[str] = None, output_dir: Optional[st
     
     # Generate filename with timestamp
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    site_name = site_alias or config.get_default_site() or "wordpress"
+    site_name = site_alias or getattr(config, 'current_site', None) or config.get_default_site() or "wordpress"
     backup_filename = f"{site_name}_backup_{timestamp}.zip"
     
     # Determine output directory

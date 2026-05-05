@@ -26,15 +26,18 @@ class DatabaseSynchronizer:
     Class to synchronize databases between environments
     """
     
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, charset_override=None):
         """
         Initializes the database synchronizer
         
         Args:
             verbose: If True, displays detailed debug messages
+            charset_override: Optional charset to use instead of the one in configuration
         """
         # Save verbosity level
         self.verbose = verbose
+        # Save charset override
+        self.charset_override = charset_override
         
         # Load configuration using the site system
         config_obj = get_yaml_config(verbose=self.verbose)
@@ -78,12 +81,25 @@ class DatabaseSynchronizer:
                 self.local_url = urls_config.get('local', self.local_url)
             
             # Load remote database configuration
+            self.config_db_charset = None
             if 'database' in config and 'remote' in config['database']:
                 db_config = config['database']['remote']
                 self.remote_db_name = db_config.get('name', self.remote_db_name)
                 self.remote_db_user = db_config.get('user', self.remote_db_user)
                 self.remote_db_pass = db_config.get('password', self.remote_db_pass)
                 self.remote_db_host = db_config.get('host', self.remote_db_host)
+                
+                # Charset from configuration (describes the remote database)
+                self.config_db_charset = db_config.get('charset', None)
+            
+            # db_charset will be used as the TARGET charset for sync operations
+            # Precedence: CLI override > Configuration > Default (utf8mb4)
+            if self.charset_override:
+                self.db_charset = self.charset_override
+            elif self.config_db_charset:
+                self.db_charset = self.config_db_charset
+            else:
+                self.db_charset = "utf8mb4"
             
             # Load cache configuration
             self.cache_config = config.get('cache', {})
@@ -108,9 +124,13 @@ class DatabaseSynchronizer:
             print(f"   - DB User: {self.remote_db_user}")
             print(f"   - DB Name: {self.remote_db_name}")
             print(f"   - DB Pass: {'*' * len(self.remote_db_pass) if self.remote_db_pass else 'not configured'}")
+            if self.db_charset:
+                print(f"   - DB Charset: {self.db_charset}")
         else:
             # Display minimal information in normal mode
             print(f"📋 Scope: [Remote] {self.remote_url} ({self.remote_host}) ⟷ [Local] {self.local_url}")
+            if self.db_charset:
+                print(f"📋 Charset: {self.db_charset}")
         
         # Save reference to config for methods that need it
         self.config = {'security': {'backups': 'disabled'}}
@@ -308,31 +328,39 @@ class DatabaseSynchronizer:
         
         local_sql_file = temp_dir / f"db-export-{timestamp}.sql"
         
-        # Get information about the charset of the database
-        with SSHClient(self.remote_host) as ssh:
-            print("🔍 Getting information about the database charset...")
-            charset_cmd = (
-                f"cd {self.remote_path} && "
-                f"wp db query 'SHOW VARIABLES LIKE \"%character%\";' --skip-column-names"
-            )
-            try:
-                code, stdout, stderr = ssh.execute(charset_cmd)
-                if code == 0 and stdout:
-                    charset_info = stdout.strip().split('\n')
-                    for line in charset_info:
-                        if 'character_set_database' in line:
-                            db_charset = line.split()[1]
-                            print(f"   - Database charset: {db_charset}")
-                        elif 'character_set_connection' in line:
-                            conn_charset = line.split()[1]
-                            print(f"   - Connection charset: {conn_charset}")
-            except Exception as e:
-                print(f"   ⚠️ Unable to get charset information: {str(e)}")
+        # Determine the remote database charset for a safe export
+        # Precedence: Configuration > Detection > Fallback (utf8)
+        detected_db_charset = self.config_db_charset
         
-        # Create export command with explicit charset options
+        if not detected_db_charset:
+            with SSHClient(self.remote_host) as ssh:
+                print("🔍 Detecting remote database charset...")
+                # We use a direct query to be sure, and skip-column-names to get just the value
+                code, stdout, stderr = ssh.execute(
+                    f"cd {self.remote_path} && wp db query \"SELECT @@character_set_database;\" --skip-column-names"
+                )
+                if code == 0 and stdout:
+                    detected_db_charset = stdout.strip()
+                    print(f"   - Detected remote charset: {detected_db_charset}")
+                else:
+                    detected_db_charset = "utf8"
+                    print(f"   ⚠️ Could not detect remote charset, using fallback: {detected_db_charset}")
+        else:
+            print(f"   - Using configured remote charset: {detected_db_charset}")
+
+        # Best Practice: Export using the SOURCE charset to prevent corruption during export
+        # Use --hex-blob for binary safety and --skip-set-charset to avoid conflicting SET NAMES
+        # We use direct mysqldump flags via wp db export for convenience and security
+        export_flags = [
+            f"--default-character-set={detected_db_charset}",
+            "--hex-blob",
+            "--skip-set-charset",
+            "--add-drop-table"
+        ]
+        
         export_cmd = (
             f"cd {self.remote_path} && "
-            f"wp db export {remote_sql_file} --add-drop-table"
+            f"wp db export {remote_sql_file} {' '.join(export_flags)}"
         )
         
         # Execute export command on the remote server
@@ -539,6 +567,10 @@ class DatabaseSynchronizer:
             run_wp_cli(["db", "reset", "--yes"], self.local_path.parent, remote=False, use_ddev=True)
 
             # 2. Primary import method
+            # Standard way: Import the SQL as-is (with the correct flags from export)
+            # and then perform any necessary conversions using WP-CLI inside the container.
+            # This avoids dangerous and potentially corrupting string replacements on large SQL files.
+
             print(f"📥 Importing database to DDEV: {os.path.basename(sql_file)}")
             result = subprocess.run(
                 ["ddev", "import-db", "--file", sql_file, "--database", "db"],
@@ -546,37 +578,14 @@ class DatabaseSynchronizer:
                 capture_output=True,
                 text=True
             )
-            
             if result.returncode != 0:
-                print(f"❌ Error importing database:")
-                print(f"   - Error code: {result.returncode}")
-                if result.stderr:
-                    print(f"   - Error: {result.stderr}")
-                if result.stdout:
-                    print(f"   - Output: {result.stdout}")
-                    
-                # Verify common errors
-                error_output = result.stderr + result.stdout
-                if "ERROR 1180" in error_output or "Operation not permitted" in error_output:
-                    print("\n⚠️ Operation not permitted error detected.")
-                    print("   This error usually occurs due to permission issues or restrictions in the file system.")
-                    print("   Recommendations:")
-                    print("   1. Ensure the user has write permissions in the directory")
-                    print("   2. Verify that there are no locks on the database")
-                    print("   3. Try importing with a smaller or fragmented file")
-                
-                elif "Unknown character set" in error_output:
-                    print("\n⚠️ Unknown character set error detected.")
-                    print("   This may occur when the SQL contains charset declarations that MySQL/MariaDB does not recognize.")
-                    print("   Recommendations:")
-                    print("   1. Edit the SQL file to change charset declarations")
-                    print("   2. Use a tool like 'sed' to correct these issues")
-                    
+                print(f"⚠️ DDEV import-db failed (likely due to charset or large file). Error: {result.stderr}")
                 # Try an alternative approach of direct import by MySQL
-                print("\n🔄 Trying alternative import method...")
+                print("🔄 Trying alternative import method...")
                 try:
+                    charset_flag = f"--default-character-set={self.db_charset}" if self.db_charset else ""
                     alt_result = subprocess.run(
-                        ["ddev", "mysql", "db", "<", sql_file],
+                        [f"ddev mysql db {charset_flag} < {sql_file}"],
                         cwd=self.local_path.parent,
                         shell=True,  # Necessary for redirection
                         capture_output=True,
@@ -585,16 +594,12 @@ class DatabaseSynchronizer:
                     
                     if alt_result.returncode == 0:
                         print("✅ Alternative import succeeded using direct MySQL")
-                        # Continue with success flow
                     else:
-                        print(f"❌ Also failed alternative method: {alt_result.stderr}")
+                        print(f"❌ Alternative import also failed: {alt_result.stderr}")
                         return False
-                            
-                except Exception as alt_e:
-                    print(f"❌ Error in alternative method: {str(alt_e)}")
+                except Exception as ex:
+                    print(f"❌ Exception during alternative import: {str(ex)}")
                     return False
-                    
-                # If we get here, the alternative method succeeded
                     
             print("✅ Database imported successfully")
             
@@ -934,10 +939,15 @@ class DatabaseSynchronizer:
             if not sql_file:
                 return False
                 
-            # 2. Import to local (without modifying the file)
+            # 2. Import to local (preparing the file for local charset and URL format)
             success = self.import_to_local(sql_file)
             if not success:
                 return False
+
+            # Industry Standard: Modernize database structure using WP-CLI instead of risky sed replacements
+            # This handles table and column collations correctly according to the WordPress environment.
+            print("🔄 Modernizing database structure to utf8mb4...")
+            run_wp_cli(["db", "convert", "utf8mb4"], self.local_path.parent, remote=False, use_ddev=True, wp_path=self.ddev_wp_path)
                 
             # 3. Replace URLs using wp-cli (after importing)
             print(f"🔄 Replacing URLs in the database...")
@@ -1083,7 +1093,7 @@ class DatabaseSynchronizer:
                 
             return success
             
-def sync_database(direction: str = "from-remote", dry_run: bool = False, verbose: bool = False, auto_confirm: bool = False) -> bool:
+def sync_database(direction: str = "from-remote", dry_run: bool = False, verbose: bool = False, auto_confirm: bool = False, charset: Optional[str] = None) -> bool:
     """
     Synchronizes the database between environments
     
@@ -1092,9 +1102,10 @@ def sync_database(direction: str = "from-remote", dry_run: bool = False, verbose
         dry_run: If True, only shows what would be done
         verbose: If True, displays detailed debug messages
         auto_confirm: If True, skips confirmation prompts
+        charset: Optional charset to use for synchronization
         
     Returns:
         bool: True if the synchronization was successful, False otherwise
     """
-    synchronizer = DatabaseSynchronizer(verbose=verbose)
+    synchronizer = DatabaseSynchronizer(verbose=verbose, charset_override=charset)
     return synchronizer.sync(direction=direction, dry_run=dry_run, auto_confirm=auto_confirm)

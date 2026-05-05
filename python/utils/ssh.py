@@ -24,64 +24,77 @@ class SSHClient:
         self.host = host
         self.client = None
         
-    def connect(self) -> bool:
+    def connect(self, retries: int = 3, delay: int = 5) -> bool:
         """
         Establishes an SSH connection with the remote server
         
+        Args:
+            retries: Number of connection attempts
+            delay: Delay between attempts in seconds
+            
         Returns:
             bool: True if the connection was successful, False otherwise
         """
-        try:
-            self.client = paramiko.SSHClient()
-            self.client.load_system_host_keys()
-            self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            
-            # Use the user's SSH configuration file
-            ssh_config = paramiko.SSHConfig()
-            user_config_file = os.path.expanduser("~/.ssh/config")
-            
-            if os.path.exists(user_config_file):
-                with open(user_config_file) as f:
-                    ssh_config.parse(f)
+        import time
+        
+        for attempt in range(retries):
+            try:
+                self.client = paramiko.SSHClient()
+                self.client.load_system_host_keys()
+                self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                
+                # Use the user's SSH configuration file
+                ssh_config = paramiko.SSHConfig()
+                user_config_file = os.path.expanduser("~/.ssh/config")
+                
+                if os.path.exists(user_config_file):
+                    with open(user_config_file) as f:
+                        ssh_config.parse(f)
+                        
+                    # Get the configuration for the specific host
+                    host_config = ssh_config.lookup(self.host)
                     
-                # Get the configuration for the specific host
-                host_config = ssh_config.lookup(self.host)
-                
-                # Extract connection parameters
-                hostname = host_config.get('hostname', self.host)
-                port = int(host_config.get('port', 22))
-                username = host_config.get('user', os.getenv('USER', 'root'))
-                identity_file = host_config.get('identityfile', [None])[0]
-                
-                # Expand the identity file path
-                if identity_file:
-                    identity_file = os.path.expanduser(identity_file)
-                
-                # Connect using the configuration
-                if identity_file:
-                    self.client.connect(
-                        hostname=hostname,
-                        port=port,
-                        username=username,
-                        key_filename=identity_file
-                    )
+                    # Extract connection parameters
+                    hostname = host_config.get('hostname', self.host)
+                    port = int(host_config.get('port', 22))
+                    username = host_config.get('user', os.getenv('USER', 'root'))
+                    identity_file = host_config.get('identityfile', [None])[0]
+                    
+                    # Expand the identity file path
+                    if identity_file:
+                        identity_file = os.path.expanduser(identity_file)
+                    
+                    # Connect using the configuration with increased timeouts
+                    # timeout: socket timeout in seconds
+                    # banner_timeout: timeout for reading the SSH banner
+                    connect_params = {
+                        "hostname": hostname,
+                        "port": port,
+                        "username": username,
+                        "timeout": 30,
+                        "banner_timeout": 30
+                    }
+                    
+                    if identity_file:
+                        connect_params["key_filename"] = identity_file
+                    
+                    self.client.connect(**connect_params)
+                    
+                    print(f"✅ SSH connection established with {self.host} ({hostname})")
+                    return True
                 else:
-                    # Without identity file, use password or SSH agent authentication
-                    self.client.connect(
-                        hostname=hostname,
-                        port=port,
-                        username=username
-                    )
-                
-                print(f"✅ SSH connection established with {self.host} ({hostname})")
-                return True
-            else:
-                print(f"❌ SSH configuration file not found: {user_config_file}")
-                return False
-                
-        except Exception as e:
-            print(f"❌ Error connecting to {self.host}: {str(e)}")
-            return False
+                    print(f"❌ SSH configuration file not found: {user_config_file}")
+                    return False
+                    
+            except Exception as e:
+                print(f"⚠️ Connection attempt {attempt + 1}/{retries} failed for {self.host}: {str(e)}")
+                if attempt < retries - 1:
+                    print(f"🔄 Retrying in {delay} seconds...")
+                    time.sleep(delay)
+                else:
+                    print(f"❌ Error connecting to {self.host} after {retries} attempts.")
+                    return False
+        return False
             
     def disconnect(self):
         """

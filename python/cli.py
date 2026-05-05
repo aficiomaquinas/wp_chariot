@@ -143,10 +143,11 @@ def sync_files_command(ctx, dry_run, direction, clean, skip_backup, patch_exclus
 @click.option("--direction", type=click.Choice(['from-remote', 'to-remote']), 
               default='from-remote', help="Direction of synchronization")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
+@click.option("--charset", help="Optional target database charset (e.g. utf8mb4)")
 @site_option
 @yes_option
 @click.pass_context
-def sync_db_command(ctx, dry_run, direction, verbose, site, yes):
+def sync_db_command(ctx, dry_run, direction, verbose, charset, site, yes):
     """
     Synchronizes the database between the remote server and the local environment.
     """
@@ -158,7 +159,7 @@ def sync_db_command(ctx, dry_run, direction, verbose, site, yes):
     if not config.select_site(site):
         sys.exit(1)
         
-    success = sync_database(direction=direction, dry_run=dry_run, verbose=verbose, auto_confirm=auto_confirm)
+    success = sync_database(direction=direction, dry_run=dry_run, verbose=verbose, auto_confirm=auto_confirm, charset=charset)
     if not success:
         sys.exit(1)
 
@@ -170,10 +171,11 @@ def sync_db_command(ctx, dry_run, direction, verbose, site, yes):
 @click.option("--skip-backup", is_flag=True, help="Skip creating a full backup before synchronizing from remote")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed information during execution")
 @click.option("--with-infra", is_flag=True, help="Install infrastructure plugins and configure media (default: false)")
+@click.option("--charset", help="Optional target database charset (e.g. utf8mb4)")
 @site_option
 @yes_option
 @click.pass_context
-def sync_all_command(ctx, dry_run, direction, clean, skip_backup, verbose, with_infra, site, yes):
+def sync_all_command(ctx, dry_run, direction, clean, skip_backup, verbose, with_infra, charset, site, yes):
     """
     Synchronizes both database and files between environments in a single command.
     
@@ -199,7 +201,7 @@ def sync_all_command(ctx, dry_run, direction, clean, skip_backup, verbose, with_
     
     # 1. Synchronize database
     print("\n🗄️ Step 1: Synchronizing database")
-    success = sync_database(direction=direction, dry_run=dry_run, verbose=verbose, auto_confirm=auto_confirm)
+    success = sync_database(direction=direction, dry_run=dry_run, verbose=verbose, auto_confirm=auto_confirm, charset=charset)
     if not success:
         print("❌ Error in database synchronization")
         sys.exit(1)

@@ -40,11 +40,9 @@ class YAMLConfig:
         # Detect and load multi-site configuration
         self.load_sites_config()
         
-        # Automatically select the default site if it exists
-        if self.default_site and self.default_site in self.sites:
-            self.set_current_site(self.default_site)
-            if self.verbose:
-                print(f"✅ Default site automatically selected: {self.default_site}")
+        # Note: We no longer automatically select the default site in __init__
+        # to ensure that selection is explicit and deterministic.
+        # Sites should be selected via select_site() explicitly.
         
     def detect_project_roots(self):
         """
@@ -188,44 +186,62 @@ class YAMLConfig:
     
     def select_site(self, site_alias=None):
         """
-        Selects a site to use
+        Selects a site to use.
+        
+        This method ensures strictly deterministic site selection:
+        1. If site_alias is provided, it is used (overwriting any previous selection).
+        2. If site_alias is None and a site is ALREADY selected, we keep it.
+        3. If site_alias is None and NO site is selected, we try to fall back to:
+           - The only site available (if there's only one).
+           - The default site defined in sites.yaml.
         
         Args:
             site_alias: Alias of the site to use (optional)
             
         Returns:
-            bool: True if the site was selected correctly
+            bool: True if a site is selected correctly, False otherwise.
         """
-        # If no site is specified, attempt to determine automatically
-        if not site_alias:
-            # If there is only one site, use it
-            if len(self.sites) == 1:
-                site_alias = list(self.sites.keys())[0]
-                if self.verbose:
-                    print(f"ℹ️ Single site selected automatically: {site_alias}")
-            # If there are more than one and there is one by default, use that
-            elif self.default_site and self.default_site in self.sites:
-                site_alias = self.default_site
-                if self.verbose:
-                    print(f"ℹ️ Default site selected: {site_alias}")
-            # If there is no default site and there are multiple sites, error
-            elif len(self.sites) > 1:
-                print("❌ Error: Multiple sites available. Specify one with --site ALIAS")
-                print("   Available sites:")
-                for alias in self.sites.keys():
-                    default_mark = " (default)" if alias == self.default_site else ""
-                    print(f"   - {alias}{default_mark}")
-                return False
-            # If no sites are configured, continue with the current configuration
-            else:
-                if self.verbose:
-                    print("ℹ️ No sites configured. Using current configuration.")
-                return True
-        
-        # Attempt to set the selected site
+        # 1. Explicit selection takes precedence
         if site_alias:
             return self.set_current_site(site_alias)
+            
+        # 2. If no alias provided but we have a selection, stay with it
+        if self.current_site:
+            if self.verbose:
+                print(f"ℹ️ Keeping current site selection: {self.current_site}")
+            return True
+            
+        # 3. Fallback logic for the first selection if no alias provided
         
+        # If there is only one site, use it
+        if len(self.sites) == 1:
+            site_alias = list(self.sites.keys())[0]
+            if self.verbose:
+                print(f"ℹ️ Single site selected automatically: {site_alias}")
+            return self.set_current_site(site_alias)
+            
+        # If there is a default site in the configuration, use it
+        if self.default_site and self.default_site in self.sites:
+            site_alias = self.default_site
+            if self.verbose:
+                print(f"ℹ️ Using default site from sites.yaml: {site_alias}")
+            return self.set_current_site(site_alias)
+            
+        # If multiple sites exist and no choice is clear, we must error
+        if len(self.sites) > 1:
+            print("❌ Error: Multiple sites available. You MUST specify one with --site ALIAS")
+            print("   Available sites:")
+            for alias in self.sites.keys():
+                default_mark = " (default)" if alias == self.default_site else ""
+                print(f"   - {alias}{default_mark}")
+            return False
+            
+        # No sites at all
+        if not self.sites:
+            if self.verbose:
+                print("ℹ️ No sites configured in sites.yaml.")
+            return True
+            
         return True
     
     def create_sites_config(self, default_site=None):
