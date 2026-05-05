@@ -236,7 +236,7 @@ def is_plugin_installed(plugin_slug: str, path: Union[str, Path], remote: bool =
     Returns:
         bool: True if the plugin is installed, False otherwise
     """
-    cmd = ["plugin", "list", "--status=inactive,active", "--format=json"]
+    cmd = ["plugin", "list", "--format=json"]
     
     code, stdout, stderr = run_wp_cli(cmd, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit, ssh=ssh)
     
@@ -244,12 +244,20 @@ def is_plugin_installed(plugin_slug: str, path: Union[str, Path], remote: bool =
         return False
         
     try:
-        plugins = json.loads(stdout)
+        # Try to find JSON in the output (it might contain PHP warnings)
+        json_start = stdout.find("[")
+        json_end = stdout.rfind("]")
+        if json_start != -1 and json_end != -1:
+            json_str = stdout[json_start:json_end+1]
+            plugins = json.loads(json_str)
+        else:
+            plugins = json.loads(stdout)
+            
         for plugin in plugins:
             if plugin.get("name", "").lower() == plugin_slug.lower():
                 return True
         return False
-    except Exception as e:
+    except Exception:
         return False
 
 def get_plugin_status(plugin_slug: str, path: Union[str, Path], remote: bool = False,
@@ -323,10 +331,12 @@ def install_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = Fals
         return False
         
     # Verify that the plugin was installed correctly
-    if "successfully installed the plugin" in stdout or "Plugin already installed" in stdout:
+    stdout_lower = stdout.lower()
+    if "success" in stdout_lower or "already installed" in stdout_lower:
         return True
     
-    return False
+    # Check if it's now installed
+    return is_plugin_installed(plugin_slug, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit, ssh=ssh)
 
 def activate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = False,
                    remote_host: Optional[str] = None, remote_path: Optional[str] = None,
@@ -370,10 +380,13 @@ def activate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = Fal
         return False
         
     # Verify that the plugin was activated correctly
-    if "Plugin 'wp-original-media-path' activated" in stdout or "Success:" in stdout or "Plugin '" in stdout:
+    stdout_lower = stdout.lower()
+    if "success" in stdout_lower or "activated" in stdout_lower:
         return True
     
-    return False
+    # Final check
+    new_status = get_plugin_status(plugin_slug, path, remote, remote_host, remote_path, use_ddev, wp_path, memory_limit, ssh=ssh)
+    return new_status == "active"
 
 def deactivate_plugin(plugin_slug: str, path: Union[str, Path], remote: bool = False,
                      remote_host: Optional[str] = None, remote_path: Optional[str] = None,
