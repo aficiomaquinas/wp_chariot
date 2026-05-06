@@ -944,10 +944,19 @@ class DatabaseSynchronizer:
             if not success:
                 return False
 
-            # Industry Standard: Modernize database structure using WP-CLI instead of risky sed replacements
+            # Industry Standard: Modernize database structure using SQL instead of the non-existent 'wp db convert'
             # This handles table and column collations correctly according to the WordPress environment.
             print("🔄 Modernizing database structure to utf8mb4...")
-            run_wp_cli(["db", "convert", "utf8mb4"], self.local_path.parent, remote=False, use_ddev=True, wp_path=self.ddev_wp_path)
+            run_wp_cli(["db", "query", "ALTER DATABASE CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"], 
+                       self.local_path.parent, remote=False, use_ddev=True, wp_path=self.ddev_wp_path)
+            
+            # Get list of tables and convert each one
+            code, stdout, stderr = run_wp_cli(["db", "tables"], self.local_path.parent, remote=False, use_ddev=True, wp_path=self.ddev_wp_path)
+            if code == 0:
+                tables = stdout.strip().split()
+                for table in tables:
+                    run_wp_cli(["db", "query", f"ALTER TABLE {table} CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"], 
+                               self.local_path.parent, remote=False, use_ddev=True, wp_path=self.ddev_wp_path)
                 
             # 3. Replace URLs using wp-cli (after importing)
             print(f"🔄 Replacing URLs in the database...")
