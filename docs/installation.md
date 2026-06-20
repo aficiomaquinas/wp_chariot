@@ -138,95 +138,83 @@ source .venv/bin/activate
 wpchariot check
 ```
 
-## 7. Local Infrastructure Initialization (DDEV)
+## 7. Local Infrastructure Initialization & Initial Seeding (DDEV + wpchariot init)
 
-`wp_chariot` is designed to synchronize data and logic, but it does **not** automatically provision the underlying host-level infrastructure (like DDEV containers). You must initialize your local DDEV project independently before running synchronization commands.
+`wp_chariot` is designed to synchronize data and logic, but it does **not** automatically provision the underlying host-level infrastructure (like DDEV containers). You must configure and start your local DDEV project independently **before** running the initial seeding commands.
 
-### Prerequisites for Site Initialization
-Ensure the following are defined in your `sites.yaml` for the site:
-- `local_path`: Absolute path to your local WordPress installation.
+### Prerequisites for Site Seeding
+Ensure the following are defined in your `sites.yaml` for the target site:
+- `local_path`: Absolute path to your local WordPress installation directory.
 - `ddev.docroot`: The relative path from the project root to the WordPress root (e.g., `app/public`).
 
-### Initialization Steps
+### Initial Provisioning Flow
 
-1. **Navigate to your local project directory** (the parent of your `local_path`'s docroot):
+#### Step 1: Initialize and Start DDEV
+First, create your local project directory and set up the DDEV container. DDEV must be running because `wpchariot init` needs an active local database container to import the MySQL dump.
+
+1. Navigate to your local project directory:
    ```bash
-   # Example for ttamayocom-full
-   cd /home/aficio/Documents/DevelopmentV2/ttamayocom-full/
+   mkdir -p /home/aficio/Documents/DevelopmentV2/myproject
+   cd /home/aficio/Documents/DevelopmentV2/myproject
    ```
 
-2. **Initialize DDEV**:
-   Run the DDEV configuration command matching your `sites.yaml` settings:
+2. Initialize DDEV:
+   Run the DDEV configuration matching your PHP and structure requirements:
    ```bash
-   ddev config --project-name=ttamayocom-full --project-type=wordpress --docroot=app/public --php-version=8.1
+   ddev config --project-name=myproject --project-type=wordpress --docroot=app/public --php-version=8.1
    ```
 
-3. **Start DDEV**:
+3. Start DDEV:
    ```bash
    ddev start
    ```
 
-4. **Verify Alignment**:
-   Run `wpchariot check` to ensure `wp_chariot` can see the running DDEV container and that the paths match:
+#### Step 2: Seed the Local Environment with `wpchariot init`
+Once DDEV is running, you can seed the local project files, database, and infrastructure plugins in a single step using the `init` command.
+
+1. Navigate to the `wp_chariot/python` directory:
    ```bash
    cd ~/wp_chariot/python
-   uv run wpchariot check --site ttamayocom-full
    ```
 
-Once the DDEV infrastructure is ready, you can proceed with the `init` or `sync-all` commands.
-
-## Configuration Verification
-
-After installation, ensure everything is properly set up:
-
-1. **SSH Connection**:
+2. Run the `init` command:
    ```bash
-   # Test SSH connection to your server
-   ssh your-remote-server
+   uv run wpchariot init --with-db --with-infra --site myproject-alias
    ```
 
-2. **DDEV Availability**:
-   ```bash
-   # Verify DDEV is installed
-   ddev --version
-   ```
+**What this command does under the hood:**
+* **File Sync (Step 1)**: Syncs files from the remote server via `rsync`, excluding patterns defined in `sites.yaml`.
+* **Database Sync (Step 2)**: Exports the remote database via SSH, downloads the dump, and imports it directly into the active local DDEV container database.
+* **Infrastructure Plugins (Step 3)**: Installs development-required plugins locally (`nginx-helper`, `redis-cache`, `wp-original-media-path`).
+* **Media Path Alignment (Step 4)**: Automatically configures local WordPress media paths to map cleanly, preventing broken assets on your local workspace.
 
-3. **wp_chariot Configuration**:
-   ```bash
-   # Verify configuration (using uv)
-   cd ~/wp_chariot/python
-   uv run wpchariot config --show
-   ```
+---
 
-4. **Database Access**:
-   ```bash
-   # Test database access on remote server
-   ssh your-remote-server "mysql -u your_db_user -p your_db_name -e 'SHOW TABLES;'"
-   ```
+## Verification & Troubleshooting
 
-## Common Installation Issues
-
-- **SSH Key Issues**: Ensure your SSH keys are properly set up in `~/.ssh/config`
-- **Python Version**: If you encounter errors, verify you're using Python 3.8+
-- **uv Not Found**: Make sure uv is installed and in your PATH. See [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/)
-- **Permission Issues**: Ensure you have correct permissions on both local and remote
-- **DDEV Not Found**: Make sure DDEV is in your PATH
-- **Database Access Denied**: Verify your database credentials and permissions
-
-For more troubleshooting help, see [Troubleshooting Guide](troubleshooting.md).
-
-## Next Steps
-
-After installation, set up your first WordPress site:
-
+### 1. Verify Configuration Alignment
+Run the check tool to make sure all local paths, remote SSH connections, and configurations are correct:
 ```bash
-cd ~/wp_chariot/python
-
-# Initialize site system (using uv)
-uv run wpchariot site --init
-
-# Add your first site
-uv run wpchariot site --add mysite
+uv run wpchariot check --site myproject-alias
 ```
 
-Then proceed to the [Workflow Guide](workflow.md) to learn how to use wp_chariot effectively. 
+The output validates:
+* **System requirements** (`rsync`, `ssh`, `ddev`).
+* **YAML configuration sections** (`ssh`, `security`, `database`, `urls`, `media`, `exclusions`, `protected_files`).
+* **Path existence** (ensuring the configured `local_path` maps to your local files).
+
+### 2. Common Installation & Init Issues
+
+* **Database Import Fails**:
+  Ensure DDEV is actually running (`ddev status`). If DDEV is stopped, `wpchariot` cannot run the import commands inside the database container.
+  
+* **SSH Connection / Key Issues**:
+  Ensure your local SSH keys are added and the host is defined in your `~/.ssh/config` file. Test with:
+  ```bash
+  ssh your-remote-host
+  ```
+  
+* **Local path does not exist**:
+  Create the folder configured in `sites.yaml` under `ssh.local_path` before running `wpchariot check`.
+
+For more detailed workflows and sync mechanics, proceed to the [Workflow Guide](workflow.md) and [FAQ](faq.md). 
