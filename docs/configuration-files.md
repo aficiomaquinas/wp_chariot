@@ -129,7 +129,7 @@ exclusions:
   # ... more exclusions ...
 ```
 
-Each key-value pair defines an exclusion pattern for files that should not be synchronized. The key is a unique identifier and the value is a glob pattern that specifies the files to exclude.
+Each key-value pair defines an exclusion pattern for files that should not be synchronized. The key is a unique identifier and the value is a glob pattern that specifies the files to exclude. For a detailed comparison between exclusions and protected files, see the [Exclusions vs. Protected Files Guide](./sync/exclusions-vs-protected.md).
 
 #### Protected Files
 
@@ -140,7 +140,7 @@ protected_files:
   # ... more protected files ...
 ```
 
-List of files that should never be overwritten, regardless of synchronization settings.
+List of files that should never be overwritten, regardless of synchronization settings. See the [Exclusions vs. Protected Files Guide](./sync/exclusions-vs-protected.md) for behavior details.
 
 ## sites.yaml File
 

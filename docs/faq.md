@@ -57,6 +57,9 @@ Yes, you can configure exclusions in your site configuration to skip certain fil
 ### Will wp_chariot overwrite my local changes?
 wp_chariot has a "protected files" feature that prevents overwriting local changes to specified files, even during synchronization from production.
 
+### What is the difference between exclusions and protected files?
+While both prevent files from being synchronized, **exclusions** globally ignore files in both directions (e.g. cache, uploads), while **protected files** guard target-specific assets (like entrypoint plugins or configurations) and perform a proactive pre-sync SSH check on the target to ensure they remain untouched. For a detailed breakdown, see the [Exclusions vs. Protected Files Guide](./sync/exclusions-vs-protected.md).
+
 ## Patch Management
 
 ### What is the patch system in wp_chariot?
